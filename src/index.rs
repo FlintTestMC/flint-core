@@ -1,54 +1,73 @@
-use crate::loader::TestLoader;
 use crate::test_spec::TestSpec;
-use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string_pretty;
 use std::collections::{BTreeMap, hash_map::DefaultHasher};
-use std::env;
 use std::fs::{File, OpenOptions, create_dir_all};
 use std::hash::{Hash, Hasher};
 use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 
+use crate::utils::{get_default_tag, get_index_name};
+
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Index {
     pub hash: u64,
     pub index: BTreeMap<String, Vec<String>>,
+    index_name: String,
 }
 
 impl Index {
-    pub fn get_index_name() -> String {
-        env::var("INDEX_NAME").unwrap_or(".cache/index.json".to_string())
+    pub fn index_exists(&self) -> bool {
+        Path::new(&self.index_name).exists()
     }
 
-    pub fn get_default_tag() -> String {
-        env::var("DEFAULT_TAG").unwrap_or("default".to_string())
-    }
-    pub fn get_test_path() -> String {
-        env::var("TEST_PATH").unwrap_or("./test".to_string())
+    pub fn open_index() -> anyhow::Result<Index> {
+        let file = File::open(get_index_name())?;
+        let reader = BufReader::new(file);
+        let index = serde_json::from_reader(reader)?;
+        Ok(index)
     }
 
-    /// Creates a new Index
-    ///
-    /// # Arguments
-    ///
-    /// * `hash`: The hash of the all usable files
-    /// * `map`: The created index as a BTreeMap
-    ///
-    /// returns: Index
-    ///
-    pub fn new(hash: u64, map: &BTreeMap<String, Vec<String>>) -> Self {
-        Index {
-            hash,
-            index: map.clone(),
+    pub fn save_index(&self) -> anyhow::Result<()> {
+        let index_string = to_string_pretty(&self)?;
+        let path = Path::new(&self.index_name);
+
+        if let Some(parent) = path.parent() {
+            create_dir_all(parent)?;
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true) // optional, overwrite existing file
+            .open(path)?;
+        file.write_all(index_string.as_bytes())?;
+        Ok(())
+    }
+
+    pub fn load(all_files: &Vec<PathBuf>) -> anyhow::Result<Self> {
+        if let Ok(index) = Index::open_index() {
+            let hash = get_hash(all_files);
+            if index.hash == hash {
+                Ok(index)
+            } else {
+                let mut index = Index::empty();
+                index.generate_index(all_files)?;
+                Ok(index)
+            }
+        } else {
+            let mut index = Index::empty();
+            index.generate_index(all_files)?;
+            Ok(index)
         }
     }
 
     /// Creates an empty Index
-    pub fn empty() -> Self {
+    fn empty() -> Self {
         Self {
             hash: 0,
             index: BTreeMap::new(),
+            index_name: get_index_name(),
         }
     }
 
@@ -61,25 +80,17 @@ impl Index {
     /// * `TEST_PATH` - Base directory for tests (default: "./test")
     /// * `INDEX_NAME` - Path to the index cache file (default: ".cache/index.json")
     /// * `DEFAULT_TAG` - Tag assigned to tests with no tags (default: "default")
-    pub fn generate_index() -> anyhow::Result<Index> {
-        let s = Self::get_test_path();
-        let path = Path::new(&s);
-        if !path.is_dir() {
-            return Err(anyhow!(format!(
-                "The path is not a directory: {}",
-                path.to_str().unwrap()
-            )));
-        }
-        let all_files = TestLoader::collect_all_test_files(path)?;
-        let mut index_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        let hash = get_hash(&all_files);
+    pub fn generate_index(&mut self, all_files: &Vec<PathBuf>) -> anyhow::Result<()> {
+        let hash = get_hash(all_files);
+
         for i in all_files {
+            println!("Indexing test file: {}", i.to_string_lossy());
             let file = File::open(i.clone())?;
             let reader = BufReader::new(file);
             let test: TestSpec = serde_json::from_reader(reader)?;
             // Add test to all tags
             for tag in &test.tags {
-                index_map
+                self.index
                     .entry(tag.clone())
                     .or_default()
                     .push(i.to_string_lossy().parse()?);
@@ -87,44 +98,16 @@ impl Index {
 
             // add test to default tag if no tag specified
             if test.tags.is_empty() {
-                index_map
-                    .entry(Index::get_default_tag().to_string())
+                self.index
+                    .entry(get_default_tag())
                     .or_default()
                     .push(i.to_string_lossy().parse()?);
             }
         }
 
-        // write Index
-        let index = Index::new(hash, &index_map);
-        let index_string = to_string_pretty(&index)?;
-        let name = Index::get_index_name();
-        let path = Path::new(&name);
-
-        // create parent directories if they don’t exist
-        if let Some(parent) = path.parent() {
-            create_dir_all(parent)?;
-        }
-
-        // now create/write the file
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true) // optional, overwrite existing file
-            .open(path)?;
-        file.write_all(index_string.as_bytes())?;
-        Ok(index)
-    }
-
-    /// Validates if the hash is the same or not
-    ///
-    /// # Arguments
-    ///
-    /// * `generated_hash`: the new generated hash
-    ///
-    /// returns: bool
-    ///
-    pub fn validate(&self, generated_hash: u64) -> bool {
-        self.hash == generated_hash
+        self.hash = hash;
+        self.save_index()?;
+        Ok(())
     }
 
     /// Searches through the index all tests with specific tags
@@ -141,33 +124,14 @@ impl Index {
     /// * `TEST_PATH` - Base directory for tests (default: "./test")
     /// * `INDEX_NAME` - Path to the index cache file (default: ".cache/index.json")
     /// * `DEFAULT_TAG` - Tag assigned to tests with no tags (default: "default")
-    pub fn get_test_paths_from_scopes(scope: &[String]) -> anyhow::Result<Vec<PathBuf>> {
-        let mut index: Index = Index::empty();
-        let mut valid_index: bool = false;
-        if Path::new(&Index::get_index_name()).exists() {
-            let file = File::open(Index::get_index_name())?;
-            let reader = BufReader::new(file);
-
-            // get index
-            index = serde_json::from_reader(reader)?;
-
-            // verify the index
-            if let Ok(vec) = TestLoader::collect_all_test_files(Path::new(&Index::get_test_path()))
-                && index.validate(get_hash(&vec))
-            {
-                valid_index = true;
-            }
-        }
-
-        // if not valid recreate index
-        if !valid_index {
-            // Index does not exists or isn't valid, so need to build the index first
-            index = Index::generate_index()?;
-        }
+    pub fn get_test_paths_from_scopes(&self, scope: &[String]) -> anyhow::Result<Vec<PathBuf>> {
         let mut test_paths = vec![];
-        for (k, v) in &index.index {
-            if scope.contains(k) {
-                for path in v {
+        for tag in scope {
+            if !self.index.contains_key(tag) {
+                return Err(anyhow::anyhow!("Tag '{}' not found in index", tag));
+            } else {
+                let paths = self.index.get(tag).unwrap();
+                for path in paths {
                     // would load the same test more than once if the test will be in more scopes
                     if !test_paths.contains(&PathBuf::from(path)) {
                         test_paths.push(PathBuf::from(path));
@@ -183,10 +147,11 @@ impl Index {
 ///
 /// # Arguments
 ///
-/// * `vec`: the fec
+/// * `vec` - The vector of paths to hash
 ///
-/// returns: u64
+/// # Returns
 ///
+/// The calculated hash as u64
 fn get_hash(vec: &Vec<PathBuf>) -> u64 {
     let mut hasher = DefaultHasher::new();
     vec.hash(&mut hasher);
