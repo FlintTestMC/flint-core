@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, HashMap};
 use crate::{index::Index, utils::is_json_file};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,10 @@ impl TestLoader {
             recursive,
             index: Index::load(&Self::collect_test_files(path, recursive)?)?,
         })
+    }
+
+    pub fn get_index(&mut self) -> &mut Index {
+        &mut self.index
     }
     /// Collect test files from a path (file or directory)
     ///
@@ -45,6 +50,53 @@ impl TestLoader {
         // Sort for consistent ordering
         test_files.sort();
         Ok(test_files)
+    }
+
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `files`:
+    ///
+    /// returns: bool
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///
+    /// ```
+    pub fn verify_index(&self, files: &Vec<PathBuf>) -> bool {
+        self.index.hash == crate::index::get_hash(files)
+    }
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `files`:
+    ///
+    /// returns: Result<(), Error>
+    ///
+    pub fn rebuild_index(&mut self, files: &Vec<PathBuf>) -> Result<()> {
+        self.index.index = BTreeMap::new();
+        self.index.generate_index(files)?;
+        Ok(())
+    }
+
+    ///
+    ///
+    /// returns: Result<(), Error>
+    ///
+    pub fn verify_and_rebuild_index(&mut self) -> Result<bool> {
+        if let Ok(files) = TestLoader::collect_test_files(&self.path, self.recursive) {
+            if !self.verify_index(&files) {
+                self.rebuild_index(&files)?;
+                Ok(false)
+            } else {
+                Ok(true)
+            }
+        } else {
+            Ok(false)
+        }
     }
 
     /// Collect all test files recursively from a directory
@@ -112,25 +164,15 @@ impl TestLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use crate::utils::tests::{DirGuard, create_emtpy_file, create_tagged_file, create_test_file_with_content, to_relative_path};
+    use serial_test::serial;
+    use std::{env, fs};
     use tempfile::TempDir;
-
-    fn create_test_file(dir: &Path, name: &str) -> PathBuf {
-        let path = dir.join(name);
-        fs::write(&path, "{}").unwrap();
-        path
-    }
-
-    fn create_test_file_with_content(dir: &Path, name: &str, content: &str) -> PathBuf {
-        let path = dir.join(name);
-        fs::write(&path, content).unwrap();
-        path
-    }
 
     #[test]
     fn test_collect_single_file() {
         let temp_dir = TempDir::new().unwrap();
-        let test_file = create_test_file(temp_dir.path(), "test.json");
+        let test_file = create_emtpy_file(temp_dir.path(), "test.json");
 
         let files = TestLoader::collect_test_files(&test_file, false).unwrap();
         assert_eq!(files.len(), 1);
@@ -152,13 +194,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in root
-        create_test_file(temp_dir.path(), "test1.json");
-        create_test_file(temp_dir.path(), "test2.json");
+        create_emtpy_file(temp_dir.path(), "test1.json");
+        create_emtpy_file(temp_dir.path(), "test2.json");
 
         // Create subdirectory with file
         let sub_dir = temp_dir.path().join("subdir");
         fs::create_dir(&sub_dir).unwrap();
-        create_test_file(&sub_dir, "test3.json");
+        create_emtpy_file(&sub_dir, "test3.json");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), false).unwrap();
 
@@ -172,16 +214,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in root
-        create_test_file(temp_dir.path(), "test1.json");
+        create_emtpy_file(temp_dir.path(), "test1.json");
 
         // Create nested subdirectories with files
         let sub_dir1 = temp_dir.path().join("subdir1");
         fs::create_dir(&sub_dir1).unwrap();
-        create_test_file(&sub_dir1, "test2.json");
+        create_emtpy_file(&sub_dir1, "test2.json");
 
         let sub_dir2 = sub_dir1.join("nested");
         fs::create_dir(&sub_dir2).unwrap();
-        create_test_file(&sub_dir2, "test3.json");
+        create_emtpy_file(&sub_dir2, "test3.json");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
 
@@ -222,9 +264,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in non-alphabetical order
-        create_test_file(temp_dir.path(), "z_test.json");
-        create_test_file(temp_dir.path(), "a_test.json");
-        create_test_file(temp_dir.path(), "m_test.json");
+        create_emtpy_file(temp_dir.path(), "z_test.json");
+        create_emtpy_file(temp_dir.path(), "a_test.json");
+        create_emtpy_file(temp_dir.path(), "m_test.json");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), false).unwrap();
 
@@ -261,7 +303,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create various file types
-        create_test_file(temp_dir.path(), "test.json");
+        create_emtpy_file(temp_dir.path(), "test.json");
         fs::write(temp_dir.path().join("test.txt"), "text").unwrap();
         fs::write(temp_dir.path().join("test.md"), "markdown").unwrap();
         fs::write(temp_dir.path().join("no_extension"), "data").unwrap();
@@ -306,5 +348,157 @@ mod tests {
 
         // Should find all 3 files
         assert_eq!(files.len(), 3);
+    }
+
+    #[test]
+    #[serial]
+    pub fn brake_index_add_file() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Setup the directory
+        // Create files in root
+        create_tagged_file(temp_dir.path(), "test1.json", &["test".to_string()]);
+
+        // Create nested subdirectories with files
+        let sub_dir1 = temp_dir.path().join("subdir1");
+        fs::create_dir(&sub_dir1).unwrap();
+        create_tagged_file(&sub_dir1, "test2.json", &["test".to_string()]);
+
+        let sub_dir2 = sub_dir1.join("nested");
+        fs::create_dir(&sub_dir2).unwrap();
+        create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
+        let index_name = "index.json";
+        unsafe {
+            env::set_var("INDEX_NAME", "./".to_owned() + index_name);
+        }
+
+        let _d = DirGuard::change_to(temp_dir.path());
+        println!("new: {}", env::current_dir().unwrap().display());
+        let loader = TestLoader::new(Path::new("."), true).unwrap();
+        let index_path = temp_dir.path().join(index_name);
+        let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        assert_eq!(
+            r#"{
+  "hash": 8180331397721424639,
+  "index": {
+    "test": [
+      "./subdir1/nested/test3.json",
+      "./subdir1/test2.json",
+      "./test1.json"
+    ]
+  }
+}"#,
+            index_content
+        );
+
+        // add file
+        create_tagged_file(&sub_dir2, "test4.json", &["test".to_string()]);
+        let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
+        assert_eq!(loader.verify_index(&files), false);
+    }
+    #[test]
+    #[serial]
+    pub fn verify_ignore_file() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Setup the directory
+        // Create files in root
+        create_tagged_file(temp_dir.path(), "test1.json", &["test".to_string()]);
+
+        // Create nested subdirectories with files
+        let sub_dir1 = temp_dir.path().join("subdir1");
+        fs::create_dir(&sub_dir1).unwrap();
+        create_tagged_file(&sub_dir1, "test2.json", &["test".to_string()]);
+
+        let sub_dir2 = sub_dir1.join("nested");
+        fs::create_dir(&sub_dir2).unwrap();
+        create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
+        let index_name = "index.json";
+        unsafe {
+            env::set_var("INDEX_NAME", "./".to_owned() + index_name);
+        }
+
+        let _d = DirGuard::change_to(temp_dir.path());
+        println!("new: {}", env::current_dir().unwrap().display());
+        let loader = TestLoader::new(Path::new("."), true).unwrap();
+        let index_path = temp_dir.path().join(index_name);
+        let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        assert_eq!(
+            r#"{
+  "hash": 8180331397721424639,
+  "index": {
+    "test": [
+      "./subdir1/nested/test3.json",
+      "./subdir1/test2.json",
+      "./test1.json"
+    ]
+  }
+}"#,
+            index_content
+        );
+
+        // add file
+        create_tagged_file(&sub_dir2, "test4.jsonnet", &["test".to_string()]);
+        let files = TestLoader::collect_test_files(Path::new("."), true).unwrap();
+        assert_eq!(loader.verify_index(&files), true);
+    }
+    #[test]
+    #[serial]
+    pub fn brake_index_add_file_and_rebuild() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Setup the directory
+        // Create files in root
+        create_tagged_file(temp_dir.path(), "test1.json", &["test".to_string()]);
+
+        // Create nested subdirectories with files
+        let sub_dir1 = temp_dir.path().join("subdir1");
+        fs::create_dir(&sub_dir1).unwrap();
+        create_tagged_file(&sub_dir1, "test2.json", &["test".to_string()]);
+
+        let sub_dir2 = sub_dir1.join("nested");
+        fs::create_dir(&sub_dir2).unwrap();
+        create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
+
+        // set index name
+        let index_name = "index.json";
+        unsafe {
+            env::set_var("INDEX_NAME", "./".to_owned() + index_name);
+        }
+
+        let _d = DirGuard::change_to(temp_dir.path());
+        println!("new: {}", env::current_dir().unwrap().display());
+
+        // create index
+        let mut loader = TestLoader::new(Path::new("."), true).unwrap();
+        let index_path = temp_dir.path().join(index_name);
+        let mut index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+
+        assert_eq!("{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}",
+            index_content
+        );
+
+        // add file
+        create_tagged_file(&sub_dir2, "test4.json", &["test".to_string()]);
+
+        // verify index
+        let files = TestLoader::collect_test_files(Path::new("."), true).unwrap();
+        assert_eq!(loader.verify_index(&files), false);
+
+        // rebuild index
+        assert_eq!(loader.rebuild_index(&files).is_ok(), true);
+
+        index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        assert_eq!(r#"{
+  "hash": 17571090526916378731,
+  "index": {
+    "test": [
+      "./subdir1/nested/test3.json",
+      "./subdir1/nested/test4.json",
+      "./subdir1/test2.json",
+      "./test1.json"
+    ]
+  }
+}"#, index_content);
     }
 }
