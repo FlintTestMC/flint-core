@@ -1,7 +1,5 @@
-use crate::index::get_hash;
 use crate::{index::Index, utils::is_json_file};
 use anyhow::Result;
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Test file loader for discovering test files in the filesystem
