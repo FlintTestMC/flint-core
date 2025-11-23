@@ -163,7 +163,7 @@ mod tests {
     use super::*;
     use crate::loader::TestLoader;
     use crate::utils::tests::{
-        DirGuard, create_emtpy_file, create_non_tagged_file, create_tagged_file, to_relative_path,
+        DirGuard, create_empty_file, create_non_tagged_file, create_tagged_file, to_relative_path,
     };
     use serial_test::serial;
     use std::env;
@@ -365,16 +365,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in root
-        create_emtpy_file(temp_dir.path(), "test1.json");
+        create_empty_file(temp_dir.path(), "test1.json");
 
         // Create nested subdirectories with files
         let sub_dir1 = temp_dir.path().join("subdir1");
         fs::create_dir(&sub_dir1).unwrap();
-        create_emtpy_file(&sub_dir1, "test2.json");
+        create_empty_file(&sub_dir1, "test2.json");
 
         let sub_dir2 = sub_dir1.join("nested");
         fs::create_dir(&sub_dir2).unwrap();
-        create_emtpy_file(&sub_dir2, "test3.json");
+        create_empty_file(&sub_dir2, "test3.json");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
         let relative = to_relative_path(temp_dir.path(), &files);
@@ -388,17 +388,17 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in root
-        create_emtpy_file(temp_dir.path(), "test1.json");
+        create_empty_file(temp_dir.path(), "test1.json");
 
         // Create nested subdirectories with files
         let sub_dir1 = temp_dir.path().join("subdir1");
         fs::create_dir(&sub_dir1).unwrap();
-        create_emtpy_file(&sub_dir1, "test2.json");
+        create_empty_file(&sub_dir1, "test2.json");
 
         let sub_dir2 = sub_dir1.join("nested");
         fs::create_dir(&sub_dir2).unwrap();
-        create_emtpy_file(&sub_dir2, "test3.json");
-        create_emtpy_file(&sub_dir2, "test3.jsonnet");
+        create_empty_file(&sub_dir2, "test3.json");
+        create_empty_file(&sub_dir2, "test3.jsonnet");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
         let relative = to_relative_path(temp_dir.path(), &files);

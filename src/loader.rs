@@ -165,7 +165,7 @@ impl TestLoader {
 mod tests {
     use super::*;
     use crate::utils::tests::{
-        DirGuard, create_emtpy_file, create_tagged_file, create_test_file_with_content,
+        DirGuard, create_empty_file, create_tagged_file, create_test_file_with_content,
     };
     use serial_test::serial;
     use std::{env, fs};
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn test_collect_single_file() {
         let temp_dir = TempDir::new().unwrap();
-        let test_file = create_emtpy_file(temp_dir.path(), "test.json");
+        let test_file = create_empty_file(temp_dir.path(), "test.json");
 
         let files = TestLoader::collect_test_files(&test_file, false).unwrap();
         assert_eq!(files.len(), 1);
@@ -196,13 +196,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in root
-        create_emtpy_file(temp_dir.path(), "test1.json");
-        create_emtpy_file(temp_dir.path(), "test2.json");
+        create_empty_file(temp_dir.path(), "test1.json");
+        create_empty_file(temp_dir.path(), "test2.json");
 
         // Create subdirectory with file
         let sub_dir = temp_dir.path().join("subdir");
         fs::create_dir(&sub_dir).unwrap();
-        create_emtpy_file(&sub_dir, "test3.json");
+        create_empty_file(&sub_dir, "test3.json");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), false).unwrap();
 
@@ -216,16 +216,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in root
-        create_emtpy_file(temp_dir.path(), "test1.json");
+        create_empty_file(temp_dir.path(), "test1.json");
 
         // Create nested subdirectories with files
         let sub_dir1 = temp_dir.path().join("subdir1");
         fs::create_dir(&sub_dir1).unwrap();
-        create_emtpy_file(&sub_dir1, "test2.json");
+        create_empty_file(&sub_dir1, "test2.json");
 
         let sub_dir2 = sub_dir1.join("nested");
         fs::create_dir(&sub_dir2).unwrap();
-        create_emtpy_file(&sub_dir2, "test3.json");
+        create_empty_file(&sub_dir2, "test3.json");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
 
@@ -266,9 +266,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create files in non-alphabetical order
-        create_emtpy_file(temp_dir.path(), "z_test.json");
-        create_emtpy_file(temp_dir.path(), "a_test.json");
-        create_emtpy_file(temp_dir.path(), "m_test.json");
+        create_empty_file(temp_dir.path(), "z_test.json");
+        create_empty_file(temp_dir.path(), "a_test.json");
+        create_empty_file(temp_dir.path(), "m_test.json");
 
         let files = TestLoader::collect_test_files(temp_dir.path(), false).unwrap();
 
@@ -305,7 +305,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Create various file types
-        create_emtpy_file(temp_dir.path(), "test.json");
+        create_empty_file(temp_dir.path(), "test.json");
         fs::write(temp_dir.path().join("test.txt"), "text").unwrap();
         fs::write(temp_dir.path().join("test.md"), "markdown").unwrap();
         fs::write(temp_dir.path().join("no_extension"), "data").unwrap();

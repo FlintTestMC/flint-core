@@ -45,7 +45,7 @@ pub mod tests {
             let _ = env::set_current_dir(&self.original);
         }
     }
-    pub fn create_emtpy_file(dir: &Path, name: &str) -> PathBuf {
+    pub fn create_empty_file(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
         fs::write(&path, "{}").unwrap();
         path
