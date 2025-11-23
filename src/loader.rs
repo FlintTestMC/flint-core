@@ -542,6 +542,67 @@ mod tests {
     }
     #[test]
     #[serial]
+    pub fn brake_index_remove_file_and_rebuild() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Setup the directory
+        // Create files in root
+        create_tagged_file(temp_dir.path(), "test1.json", &["test".to_string()]);
+
+        // Create nested subdirectories with files
+        let sub_dir1 = temp_dir.path().join("subdir1");
+        fs::create_dir(&sub_dir1).unwrap();
+        create_tagged_file(&sub_dir1, "test2.json", &["test".to_string()]);
+
+        let sub_dir2 = sub_dir1.join("nested");
+        fs::create_dir(&sub_dir2).unwrap();
+        let delete = create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
+
+        // set index name
+        let index_name = "index.json";
+        unsafe {
+            env::set_var("INDEX_NAME", "./".to_owned() + index_name);
+        }
+
+        let _d = DirGuard::change_to(temp_dir.path());
+        println!("new: {}", env::current_dir().unwrap().display());
+
+        // create index
+        let mut loader = TestLoader::new(Path::new("."), true).unwrap();
+        let index_path = temp_dir.path().join(index_name);
+        let mut index_content = fs::read_to_string(&index_path).unwrap();
+
+        assert_eq!(
+            "{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}",
+            index_content
+        );
+
+        // remove file
+        fs::remove_file(delete).unwrap();
+
+        // verify index
+        let files = TestLoader::collect_test_files(Path::new("."), true).unwrap();
+        assert!(!loader.verify_index(&files));
+
+        // rebuild index
+        assert!(loader.rebuild_index(&files).is_ok());
+
+        index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        assert_eq!(
+            r#"{
+  "hash": 9213419820977342414,
+  "index": {
+    "test": [
+      "./subdir1/test2.json",
+      "./test1.json"
+    ]
+  }
+}"#,
+            index_content
+        );
+    }
+    #[test]
+    #[serial]
     pub fn brake_index_add_file_and_rebuild_one_command() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -591,6 +652,63 @@ mod tests {
     "test": [
       "./subdir1/nested/test3.json",
       "./subdir1/nested/test4.json",
+      "./subdir1/test2.json",
+      "./test1.json"
+    ]
+  }
+}"#,
+            index_content
+        );
+    }
+    #[test]
+    #[serial]
+    pub fn brake_index_remove_file_and_rebuild_one_command() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Setup the directory
+        // Create files in root
+        create_tagged_file(temp_dir.path(), "test1.json", &["test".to_string()]);
+
+        // Create nested subdirectories with files
+        let sub_dir1 = temp_dir.path().join("subdir1");
+        fs::create_dir(&sub_dir1).unwrap();
+        create_tagged_file(&sub_dir1, "test2.json", &["test".to_string()]);
+
+        let sub_dir2 = sub_dir1.join("nested");
+        fs::create_dir(&sub_dir2).unwrap();
+        let delete = create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
+
+        // set index name
+        let index_name = "index.json";
+        unsafe {
+            env::set_var("INDEX_NAME", "./".to_owned() + index_name);
+        }
+
+        let _d = DirGuard::change_to(temp_dir.path());
+        println!("new: {}", env::current_dir().unwrap().display());
+
+        // create index
+        let mut loader = TestLoader::new(Path::new("."), true).unwrap();
+        let index_path = temp_dir.path().join(index_name);
+        let mut index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+
+        assert_eq!(
+            "{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}",
+            index_content
+        );
+
+        // remove file
+        fs::remove_file(delete).unwrap();
+
+        // rebuild index
+        assert!(loader.verify_and_rebuild_index().is_ok());
+
+        index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        assert_eq!(
+            r#"{
+  "hash": 9213419820977342414,
+  "index": {
+    "test": [
       "./subdir1/test2.json",
       "./test1.json"
     ]
