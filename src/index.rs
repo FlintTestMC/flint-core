@@ -46,6 +46,16 @@ impl Index {
         Ok(())
     }
 
+    ///
+    /// Creates the Index.
+    /// If an index is found and valid, it loads it from the file.
+    /// If not it will create a new index
+    /// # Arguments
+    ///
+    /// * `all_files`: The test files which are the base for the index.
+    ///
+    /// returns: Result<Index, Error>
+    ///
     pub fn load(all_files: &Vec<PathBuf>) -> anyhow::Result<Self> {
         if let Ok(index) = Index::open_index() {
             let hash = get_hash(all_files);

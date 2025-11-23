@@ -11,7 +11,7 @@ pub fn get_test_path() -> String {
     env::var("TEST_PATH").unwrap_or("./test".to_string())
 }
 
-/// Check if a file is a JSON file by extension
+/// Check if a file is a JSON file by extension and excludes the index.json
 pub fn is_json_file(path: &Path) -> bool {
     path.extension()
         .and_then(|s| s.to_str())
@@ -55,7 +55,7 @@ pub mod tests {
         let obj = json!({
             "name": "Test 1",
             "description": "A simple test",
-            "tags": tags,          // automatically converted to JSON array
+            "tags": tags,
             "timeline": []
         });
 
@@ -67,7 +67,18 @@ pub mod tests {
         let obj = json!({
             "name": "Test 1",
             "description": "A simple test",
-            "tags": [],          // automatically converted to JSON array
+            "tags": [],
+            "timeline": []
+        });
+
+        fs::write(&path, obj.to_string()).unwrap();
+        path
+    }
+    pub fn create_non_tag_field_file(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        let obj = json!({
+            "name": "Test 1",
+            "description": "A simple test",
             "timeline": []
         });
 
