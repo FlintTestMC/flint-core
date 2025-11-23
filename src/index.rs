@@ -168,7 +168,6 @@ mod tests {
     use serial_test::serial;
     use std::env;
     use std::fs;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn generate_index_and_return_index(temp_dir: TempDir) -> String {
