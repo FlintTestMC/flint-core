@@ -69,7 +69,7 @@ impl TestLoader {
     /// Is forced
     /// # Arguments
     ///
-    /// * `files`: teh current test files in the directory
+    /// * `files`: The current test files in the directory
     ///
     /// returns: Result<(), Error>
     ///
