@@ -73,6 +73,33 @@ impl Index {
         }
     }
 
+    ///
+    /// Verifies if the index is still correct
+    /// # Arguments
+    ///
+    /// * `files`: the current test files in the directory
+    ///
+    /// returns: bool
+    ///
+    pub fn verify(&self, files: &Vec<PathBuf>) -> bool {
+        self.hash == get_hash(files)
+    }
+
+    ///
+    /// rebuilds the index and deletes the old index.
+    /// Is forced
+    /// # Arguments
+    ///
+    /// * `files`: The current test files in the directory
+    ///
+    /// returns: Result<(), Error>
+    ///
+    pub fn rebuild(&mut self, files: &Vec<PathBuf>) -> anyhow::Result<()> {
+        self.index = BTreeMap::new();
+        self.generate_index(files)?;
+        Ok(())
+    }
+
     /// Creates an empty Index
     fn empty() -> Self {
         Self {

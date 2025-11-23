@@ -1,3 +1,4 @@
+use crate::index::get_hash;
 use crate::{index::Index, utils::is_json_file};
 use anyhow::Result;
 use std::collections::BTreeMap;
@@ -19,9 +20,6 @@ impl TestLoader {
         })
     }
 
-    pub fn get_index(&mut self) -> &mut Index {
-        &mut self.index
-    }
     /// Collect test files from a path (file or directory)
     ///
     /// # Arguments
@@ -51,7 +49,6 @@ impl TestLoader {
         test_files.sort();
         Ok(test_files)
     }
-
     ///
     /// Verifies if the index is still correct
     /// # Arguments
@@ -61,7 +58,7 @@ impl TestLoader {
     /// returns: bool
     ///
     pub fn verify_index(&self, files: &Vec<PathBuf>) -> bool {
-        self.index.hash == crate::index::get_hash(files)
+        self.index.verify(files)
     }
 
     ///
@@ -73,10 +70,8 @@ impl TestLoader {
     ///
     /// returns: Result<(), Error>
     ///
-    pub fn rebuild_index(&mut self, files: &Vec<PathBuf>) -> Result<()> {
-        self.index.index = BTreeMap::new();
-        self.index.generate_index(files)?;
-        Ok(())
+    pub fn rebuild_index(&mut self, files: &Vec<PathBuf>) -> anyhow::Result<()> {
+        self.index.rebuild(files)
     }
 
     ///
@@ -85,8 +80,8 @@ impl TestLoader {
     ///
     pub fn verify_and_rebuild_index(&mut self) -> Result<bool> {
         if let Ok(files) = TestLoader::collect_test_files(&self.path, self.recursive) {
-            if !self.verify_index(&files) {
-                self.rebuild_index(&files)?;
+            if !self.index.verify(&files) {
+                self.index.rebuild(&files)?;
                 Ok(false)
             } else {
                 Ok(true)
