@@ -395,7 +395,7 @@ mod tests {
 
         // add file
         create_tagged_file(&sub_dir2, "test4.json", &["test".to_string()]);
-        let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
+        let files = TestLoader::collect_test_files(Path::new("."), true).unwrap();
         assert!(!loader.verify_index(&files));
     }
     #[test]

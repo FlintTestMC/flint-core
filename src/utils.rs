@@ -80,7 +80,7 @@ pub mod tests {
         path
     }
 
-    pub fn to_relative_path(root: &Path, files: &Vec<PathBuf>) -> Vec<PathBuf> {
+    pub fn to_relative_path(root: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
         files
             .iter()
             .map(|p| {
