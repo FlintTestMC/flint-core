@@ -338,7 +338,6 @@ mod tests {
         );
     }
 
-
     #[test]
     #[serial]
     pub fn brake_index_add_file() {
