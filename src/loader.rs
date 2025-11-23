@@ -396,7 +396,7 @@ mod tests {
         // add file
         create_tagged_file(&sub_dir2, "test4.json", &["test".to_string()]);
         let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
-        assert_eq!(loader.verify_index(&files), false);
+        assert!(!loader.verify_index(&files));
     }
     #[test]
     #[serial]
@@ -442,7 +442,7 @@ mod tests {
         // add file
         create_tagged_file(&sub_dir2, "test4.jsonnet", &["test".to_string()]);
         let files = TestLoader::collect_test_files(Path::new("."), true).unwrap();
-        assert_eq!(loader.verify_index(&files), true);
+        assert!(loader.verify_index(&files));
     }
     #[test]
     #[serial]
@@ -486,10 +486,10 @@ mod tests {
 
         // verify index
         let files = TestLoader::collect_test_files(Path::new("."), true).unwrap();
-        assert_eq!(loader.verify_index(&files), false);
+        assert!(!loader.verify_index(&files));
 
         // rebuild index
-        assert_eq!(loader.rebuild_index(&files).is_ok(), true);
+        assert!(loader.rebuild_index(&files).is_ok());
 
         index_content = fs::read_to_string(&index_path).expect("Could not read index file");
         assert_eq!(
@@ -548,7 +548,7 @@ mod tests {
         create_tagged_file(&sub_dir2, "test4.json", &["test".to_string()]);
 
         // rebuild index
-        assert_eq!(loader.verify_and_rebuild_index().is_ok(), true);
+        assert!(loader.verify_and_rebuild_index().is_ok());
 
         index_content = fs::read_to_string(&index_path).expect("Could not read index file");
         assert_eq!(
