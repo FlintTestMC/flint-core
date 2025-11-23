@@ -407,7 +407,7 @@ mod tests {
 
         let _d = DirGuard::change_to(temp_dir.path());
         println!("new: {}", env::current_dir().unwrap().display());
-        let loader = TestLoader::new(Path::new("."), true).unwrap();
+        TestLoader::new(Path::new("."), true).unwrap();
         let index_path = temp_dir.path().join(index_name);
         let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
         assert_eq!(
