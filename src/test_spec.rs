@@ -346,25 +346,6 @@ mod tests {
         assert!(result.contains("west=side"));
     }
     #[test]
-    #[should_panic(expected = "color=blue")]
-    fn test_failing_block() {
-        let mut block = Block {
-            id: "minecraft:stone".to_string(),
-            properties: HashMap::new(),
-        };
-        block
-            .properties
-            .insert("color".to_string(), Value::from("red"));
-
-        // Dieser Test wird failen, aber das ist erwartet
-        let result = block.to_command();
-        assert!(
-            result.contains("color=blue"),
-            "Expected color=blue but got: {}",
-            result
-        );
-    }
-    #[test]
     fn test_parse_lever() {
         let json = r#"{
             "id": "minecraft:lever",
@@ -387,6 +368,13 @@ mod tests {
         "powered": false,
         "face": "floor"
     }"#;
+
+        let _block: Block = serde_json::from_str(json).unwrap();
+    }
+    #[test]
+    #[should_panic(expected = "missing field `id`")]
+    fn test_parse_missing_object() {
+        let json = r#"{}"#;
 
         let _block: Block = serde_json::from_str(json).unwrap();
     }
