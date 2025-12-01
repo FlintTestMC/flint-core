@@ -93,14 +93,14 @@ impl Block {
 pub enum ActionType {
     Place {
         pos: [i32; 3],
-        block: String,
+        block: Block,
     },
     PlaceEach {
         blocks: Vec<BlockPlacement>,
     },
     Fill {
         region: [[i32; 3]; 2],
-        with: String,
+        with: Block,
     },
     Remove {
         pos: [i32; 3],
@@ -118,7 +118,7 @@ pub enum ActionType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockPlacement {
     pub pos: [i32; 3],
-    pub block: String,
+    pub block: Block,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
