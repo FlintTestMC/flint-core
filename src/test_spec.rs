@@ -56,9 +56,9 @@ impl TickSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
-    id: String,
+    pub id: String,
     #[serde(flatten)]
-    properties: HashMap<String, serde_json::Value>,
+    pub properties: HashMap<String, serde_json::Value>,
 }
 
 impl Block {

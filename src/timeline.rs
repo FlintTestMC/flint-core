@@ -102,7 +102,7 @@ impl<'a> TimelineAggregate<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_spec::{ActionType, TickSpec};
+    use crate::test_spec::{ActionType, Block, TickSpec};
 
     fn create_test_spec(
         name: &str,
@@ -127,14 +127,20 @@ mod tests {
             at: TickSpec::Single(0),
             action_type: ActionType::Place {
                 pos: [0, 0, 0],
-                block: "stone".to_string(),
+                block: Block {
+                    id: "stone".to_string(),
+                    properties: Default::default(),
+                },
             },
         };
         let entry2 = TimelineEntry {
             at: TickSpec::Single(5),
             action_type: ActionType::Place {
                 pos: [1, 0, 0],
-                block: "dirt".to_string(),
+                block: Block {
+                    id: "dirt".to_string(),
+                    properties: Default::default(),
+                },
             },
         };
 
@@ -154,14 +160,20 @@ mod tests {
             at: TickSpec::Single(0),
             action_type: ActionType::Place {
                 pos: [0, 0, 0],
-                block: "stone".to_string(),
+                block: Block {
+                    id: "stone".to_string(),
+                    properties: Default::default(),
+                },
             },
         };
         let entry2 = TimelineEntry {
             at: TickSpec::Single(10),
             action_type: ActionType::Place {
                 pos: [1, 0, 0],
-                block: "dirt".to_string(),
+                block: Block {
+                    id: "dirt".to_string(),
+                    properties: Default::default(),
+                },
             },
         };
 
@@ -219,14 +231,20 @@ mod tests {
             at: TickSpec::Single(5),
             action_type: ActionType::Place {
                 pos: [0, 0, 0],
-                block: "stone".to_string(),
+                block: Block {
+                    id: "stone".to_string(),
+                    properties: Default::default(),
+                },
             },
         };
         let entry2 = TimelineEntry {
             at: TickSpec::Single(15),
             action_type: ActionType::Place {
                 pos: [1, 0, 0],
-                block: "dirt".to_string(),
+                block: Block {
+                    properties: Default::default(),
+                    id: "dirt".to_string(),
+                },
             },
         };
 
