@@ -62,7 +62,7 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn to_block_state(&self) -> String {
+    pub fn to_command(&self) -> String {
         if self.properties.is_empty() {
             // Nur ID wenn keine Properties
             self.id.clone()
@@ -271,5 +271,211 @@ impl TestSpec {
             );
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    #[test]
+    fn redstone_lever_with_two_properties_command_string() {
+        let mut block = Block {
+            id: "minecraft:lever".to_string(),
+            properties: HashMap::new(),
+        };
+        block
+            .properties
+            .insert("powered".to_string(), Value::from(false));
+        block
+            .properties
+            .insert("face".to_string(), Value::from("floor"));
+        let result = block.to_command();
+        assert!(
+            result == "minecraft:lever[powered=false,face=floor]"
+                || result == "minecraft:lever[face=floor,powered=false]",
+            "Got: {}",
+            result
+        );
+    }
+    #[test]
+    fn only_id_command_string() {
+        let block = Block {
+            id: "minecraft:stone".to_string(),
+            properties: HashMap::new(),
+        };
+        let result = block.to_command();
+        assert_eq!(result, "minecraft:stone");
+    }
+    #[test]
+    fn empty_id_command_string() {
+        let block = Block {
+            id: "".to_string(),
+            properties: HashMap::new(),
+        };
+        let result = block.to_command();
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_redstone_wire() {
+        let mut block = Block {
+            id: "minecraft:redstone_wire".to_string(),
+            properties: HashMap::new(),
+        };
+        block
+            .properties
+            .insert("north".to_string(), Value::from("side"));
+        block
+            .properties
+            .insert("east".to_string(), Value::from("up"));
+        block
+            .properties
+            .insert("south".to_string(), Value::from("none"));
+        block
+            .properties
+            .insert("west".to_string(), Value::from("side"));
+
+        let result = block.to_command();
+        // Prüfe dass ID und Properties vorhanden sind
+        assert!(result.starts_with("minecraft:redstone_wire["));
+        assert!(result.ends_with("]"));
+        assert!(result.contains("north=side"));
+        assert!(result.contains("east=up"));
+        assert!(result.contains("south=none"));
+        assert!(result.contains("west=side"));
+    }
+    #[test]
+    #[should_panic(expected = "color=blue")]
+    fn test_failing_block() {
+        let mut block = Block {
+            id: "minecraft:stone".to_string(),
+            properties: HashMap::new(),
+        };
+        block
+            .properties
+            .insert("color".to_string(), Value::from("red"));
+
+        // Dieser Test wird failen, aber das ist erwartet
+        let result = block.to_command();
+        assert!(
+            result.contains("color=blue"),
+            "Expected color=blue but got: {}",
+            result
+        );
+    }
+    #[test]
+    fn test_parse_lever() {
+        let json = r#"{
+            "id": "minecraft:lever",
+            "powered": false,
+            "face": "floor"
+        }"#;
+
+        let block: Block = serde_json::from_str(json).unwrap();
+        assert_eq!(block.id, "minecraft:lever");
+        assert_eq!(block.properties.get("powered"), Some(&Value::Bool(false)));
+        assert_eq!(
+            block.properties.get("face"),
+            Some(&Value::String("floor".to_string()))
+        );
+    }
+    #[test]
+    #[should_panic(expected = "missing field `id`")]
+    fn test_parse_missing_id() {
+        let json = r#"{
+        "powered": false,
+        "face": "floor"
+    }"#;
+
+        let _block: Block = serde_json::from_str(json).unwrap();
+    }
+
+    #[test]
+    fn test_parse_null_property() {
+        let json = r#"{
+        "id": "minecraft:lever",
+        "powered": null,
+        "face": "floor"
+    }"#;
+
+        let block: Block = serde_json::from_str(json).unwrap();
+        assert_eq!(block.id, "minecraft:lever");
+        assert_eq!(block.properties.get("powered"), Some(&Value::Null));
+        assert_eq!(
+            block.properties.get("face"),
+            Some(&Value::String("floor".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_nested_object() {
+        let json = r#"{
+        "id": "minecraft:chest",
+        "facing": "north",
+        "metadata": {
+            "items": ["diamond", "gold"]
+        }
+    }"#;
+
+        let block: Block = serde_json::from_str(json).unwrap();
+        assert_eq!(block.id, "minecraft:chest");
+        assert!(block.properties.get("metadata").unwrap().is_object());
+    }
+
+    #[test]
+    fn test_parse_array_property() {
+        let json = r#"{
+        "id": "minecraft:custom_block",
+        "colors": ["red", "blue", "green"]
+    }"#;
+
+        let block: Block = serde_json::from_str(json).unwrap();
+        assert_eq!(block.id, "minecraft:custom_block");
+        assert!(block.properties.get("colors").unwrap().is_array());
+    }
+
+    #[test]
+    fn test_parse_empty_string_id() {
+        let json = r#"{
+        "id": "",
+        "powered": false
+    }"#;
+
+        let block: Block = serde_json::from_str(json).unwrap();
+        assert_eq!(block.id, "");
+        assert_eq!(block.properties.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_special_characters() {
+        let json = r#"{
+        "id": "minecraft:custom",
+        "name": "Test \"quoted\" value",
+        "path": "C:\\Users\\test"
+    }"#;
+
+        let block: Block = serde_json::from_str(json).unwrap();
+        assert_eq!(block.id, "minecraft:custom");
+        assert_eq!(
+            block.properties.get("name"),
+            Some(&Value::String("Test \"quoted\" value".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_number_types() {
+        let json = r#"{
+        "id": "minecraft:block",
+        "integer": 42,
+        "float": 3.14,
+        "negative": -10
+    }"#;
+
+        let block: Block = serde_json::from_str(json).unwrap();
+        assert_eq!(block.id, "minecraft:block");
+        assert!(block.properties.get("integer").unwrap().is_number());
+        assert!(block.properties.get("float").unwrap().is_number());
+        assert!(block.properties.get("negative").unwrap().is_number());
     }
 }
