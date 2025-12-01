@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +50,40 @@ impl TickSpec {
         match self {
             TickSpec::Single(t) => vec![*t],
             TickSpec::Multiple(v) => v.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Block {
+    id: String,
+    #[serde(flatten)]
+    properties: HashMap<String, serde_json::Value>,
+}
+
+impl Block {
+    pub fn to_block_state(&self) -> String {
+        if self.properties.is_empty() {
+            // Nur ID wenn keine Properties
+            self.id.clone()
+        } else {
+            // ID mit Properties
+            let props: Vec<String> = self
+                .properties
+                .iter()
+                .map(|(key, value)| {
+                    // Value ohne Quotes formatieren
+                    let val = match value {
+                        serde_json::Value::String(s) => s.clone(),
+                        serde_json::Value::Bool(b) => b.to_string(),
+                        serde_json::Value::Number(n) => n.to_string(),
+                        _ => value.to_string(),
+                    };
+                    format!("{}={}", key, val)
+                })
+                .collect();
+
+            format!("{}[{}]", self.id, props.join(","))
         }
     }
 }
