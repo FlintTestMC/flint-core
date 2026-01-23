@@ -9,9 +9,6 @@ pub struct AssertionResult {
     /// Whether the assertion succeeded
     pub success: bool,
 
-    /// Type of action (e.g., "Assert", "AssertState")
-    pub action_type: String,
-
     /// Error message if the assertion failed
     pub error_message: Option<String>,
 
@@ -24,11 +21,10 @@ pub struct AssertionResult {
 
 impl AssertionResult {
     /// Create a successful assertion result
-    pub fn success(tick: u32, action_type: impl Into<String>) -> Self {
+    pub fn success(tick: u32) -> Self {
         Self {
             tick,
             success: true,
-            action_type: action_type.into(),
             error_message: None,
             position: None,
             execution_time_ms: None,
@@ -36,11 +32,10 @@ impl AssertionResult {
     }
 
     /// Create a failed assertion result
-    pub fn failure(tick: u32, action_type: impl Into<String>, error: impl Into<String>) -> Self {
+    pub fn failure(tick: u32, error: impl Into<String>) -> Self {
         Self {
             tick,
             success: false,
-            action_type: action_type.into(),
             error_message: Some(error.into()),
             position: None,
             execution_time_ms: None,
@@ -218,13 +213,12 @@ mod tests {
 
     #[test]
     fn test_assertion_result_success() {
-        let result = AssertionResult::success(5, "Assert")
+        let result = AssertionResult::success(5)
             .with_position([1, 2, 3])
             .with_timing(100);
 
         assert!(result.success);
         assert_eq!(result.tick, 5);
-        assert_eq!(result.action_type, "Assert");
         assert_eq!(result.position, Some([1, 2, 3]));
         assert_eq!(result.execution_time_ms, Some(100));
         assert!(result.error_message.is_none());
@@ -233,11 +227,10 @@ mod tests {
     #[test]
     fn test_assertion_result_failure() {
         let result =
-            AssertionResult::failure(10, "AssertState", "Block mismatch").with_position([5, 6, 7]);
+            AssertionResult::failure(10, "Block mismatch").with_position([5, 6, 7]);
 
         assert!(!result.success);
         assert_eq!(result.tick, 10);
-        assert_eq!(result.action_type, "AssertState");
         assert_eq!(result.error_message, Some("Block mismatch".to_string()));
         assert_eq!(result.position, Some([5, 6, 7]));
     }
@@ -249,8 +242,8 @@ mod tests {
             .with_execution_time(5000)
             .with_offset([0, 0, 0]);
 
-        result.add_assertion(AssertionResult::success(5, "Assert"));
-        result.add_assertion(AssertionResult::success(10, "AssertState"));
+        result.add_assertion(AssertionResult::success(5));
+        result.add_assertion(AssertionResult::success(10));
 
         assert!(result.success);
         assert_eq!(result.passed_count(), 2);
@@ -263,13 +256,12 @@ mod tests {
     fn test_test_result_with_failure() {
         let mut result = TestResult::new("test2");
 
-        result.add_assertion(AssertionResult::success(5, "Assert"));
+        result.add_assertion(AssertionResult::success(5));
         result.add_assertion(AssertionResult::failure(
             10,
-            "Assert",
             "Expected stone, got dirt",
         ));
-        result.add_assertion(AssertionResult::success(15, "AssertState"));
+        result.add_assertion(AssertionResult::success(15));
 
         assert!(!result.success);
         assert_eq!(result.passed_count(), 2);
@@ -285,7 +277,7 @@ mod tests {
     fn test_test_summary() {
         let result1 = TestResult::new("test1").with_execution_time(1000);
         let mut result2 = TestResult::new("test2").with_execution_time(2000);
-        result2.add_assertion(AssertionResult::failure(5, "Assert", "Failed"));
+        result2.add_assertion(AssertionResult::failure(5, "Failed"));
 
         let summary = TestSummary::from_results(vec![result1, result2]);
 

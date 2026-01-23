@@ -22,12 +22,83 @@ pub struct TestSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupSpec {
-    pub cleanup: CleanupSpec,
+    #[serde(default)]
+    pub cleanup: Option<CleanupSpec>,
+    #[serde(default)]
+    pub player: Option<PlayerConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CleanupSpec {
     pub region: [[i32; 3]; 2],
+}
+/// Player inventory slots
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerSlot {
+    // Hotbar (9 slots)
+    Hotbar1,
+    Hotbar2,
+    Hotbar3,
+    Hotbar4,
+    Hotbar5,
+    Hotbar6,
+    Hotbar7,
+    Hotbar8,
+    Hotbar9,
+
+    // Off-hand
+    OffHand,
+
+    // Armor
+    Helmet,
+    Chestplate,
+    Leggings,
+    Boots,
+}
+
+impl PlayerSlot {
+    /// Convert hotbar number (1-9) to PlayerSlot
+    pub fn hotbar(n: u8) -> Option<Self> {
+        match n {
+            1 => Some(Self::Hotbar1),
+            2 => Some(Self::Hotbar2),
+            3 => Some(Self::Hotbar3),
+            4 => Some(Self::Hotbar4),
+            5 => Some(Self::Hotbar5),
+            6 => Some(Self::Hotbar6),
+            7 => Some(Self::Hotbar7),
+            8 => Some(Self::Hotbar8),
+            9 => Some(Self::Hotbar9),
+            _ => None,
+        }
+    }
+}
+
+/// Player configuration for advanced mode (initial inventory setup)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PlayerConfig {
+    /// Initial inventory state (slot name -> item config)
+    #[serde(default)]
+    pub inventory: HashMap<PlayerSlot, SlotConfig>,
+    /// Initially selected hotbar slot (1-9), defaults to 1
+    #[serde(default = "default_selected_hotbar")]
+    pub selected_hotbar: u8,
+}
+
+fn default_selected_hotbar() -> u8 {
+    1
+}
+
+/// Configuration for a single inventory slot
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlotConfig {
+    /// Item identifier, e.g., "minecraft:honeycomb"
+    pub item: String,
+    /// Stack count, defaults to 1
+    #[serde(default = "default_count")]
+    pub count: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,7 +127,9 @@ impl TickSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
+    /// Block identifier, e.g., "minecraft:stone"
     pub id: String,
+    /// Block state properties, e.g., {"powered": "true", "facing": "north"}
     #[serde(flatten)]
     pub properties: HashMap<String, serde_json::Value>,
 }
@@ -100,15 +173,68 @@ impl Block {
         }
     }
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockFace {
+    Top,    // +Y
+    Bottom, // -Y
+    North,  // -Z
+    South,  // +Z
+    East,   // +X
+    West,   // -X
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 pub enum ActionType {
-    Place { pos: [i32; 3], block: Block },
-    PlaceEach { blocks: Vec<BlockPlacement> },
-    Fill { region: [[i32; 3]; 2], with: Block },
-    Remove { pos: [i32; 3] },
-    Assert { checks: Vec<BlockCheck> },
+    // Block actions
+    Place {
+        pos: [i32; 3],
+        block: Block,
+    },
+    PlaceEach {
+        blocks: Vec<BlockPlacement>,
+    },
+    Fill {
+        region: [[i32; 3]; 2],
+        with: Block,
+    },
+    Remove {
+        pos: [i32; 3],
+    },
+
+    // Assertion actions
+    Assert {
+        checks: Vec<BlockCheck>,
+    },
+
+    // Player actions (for item interactions)
+    /// Use an item on a block face (e.g., honeycomb on copper, axe on log)
+    UseItemOn {
+        pos: [i32; 3],
+        face: BlockFace,
+        /// Item to use (for simple mode). If not specified, uses player's active item.
+        #[serde(default)]
+        item: Option<String>,
+    },
+
+    /// Set an item in a player slot
+    SetSlot {
+        slot: PlayerSlot,
+        #[serde(default)]
+        item: Option<String>,
+        #[serde(default = "default_count")]
+        count: u8,
+    },
+
+    /// Select which hotbar slot is active (1-9)
+    SelectHotbar {
+        slot: u8,
+    },
+}
+
+fn default_count() -> u8 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,7 +275,11 @@ impl TestSpec {
     pub fn cleanup_region(&self) -> [[i32; 3]; 2] {
         self.setup
             .as_ref()
-            .map(|s| s.cleanup.region)
+            .ok_or_else(|| panic!("setup is missing"))
+            .unwrap()
+            .cleanup
+            .as_ref()
+            .map(|s| s.region)
             .expect("Cleanup region is required but not present")
     }
 
@@ -158,8 +288,10 @@ impl TestSpec {
         let setup = self.setup.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Test '{}' missing required 'setup' section", self.name)
         })?;
-
-        let region = setup.cleanup.region;
+        if let None = setup.cleanup {
+            anyhow::bail!("Test '{}' missing 'cleanup' section", self.name);
+        }
+        let region = setup.cleanup.as_ref().unwrap().region;
         let min = region[0];
         let max = region[1];
 
@@ -234,6 +366,11 @@ impl TestSpec {
                         self.validate_position(check.pos, &region)?;
                     }
                 }
+                ActionType::UseItemOn { pos, .. } => {
+                    self.validate_position(*pos, &region)?;
+                }
+                // SetSlot and SelectHotbar don't have positions to validate
+                ActionType::SetSlot { .. } | ActionType::SelectHotbar { .. } => {}
             }
         }
 
