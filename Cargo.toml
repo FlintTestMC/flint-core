@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "The shared functionality for flint implementations"
+keywords = ["flint", "steel", "minecraft", "test"]
+authors = ["JunkyDeveloper <junkydeveloper@gmail.com>"]
+categories = ["minecraft", "flint", "test", "steel"]
+readme = "README.md"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
