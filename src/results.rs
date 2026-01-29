@@ -1,56 +1,105 @@
+use crate::results::AssertionResult::Failure;
+use crate::test_spec::Block;
 use serde::{Deserialize, Serialize};
+
+/// Outcome of executing a single action
+pub enum ActionOutcome {
+    /// Non-assertion action completed (place, fill, remove)
+    Action,
+    /// Assertion passed
+    AssertPassed,
+    /// Assertion failed with details
+    AssertFailed(AssertFailure),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InfoType {
+    String(String),
+    Block(Block),
+}
+
+impl InfoType {
+    pub fn get_string(&self) -> Option<String> {
+        match self {
+            InfoType::String(s) => Some(s.clone()),
+            InfoType::Block(_) => None,
+        }
+    }
+}
+impl From<InfoType> for String {
+    fn from(val: InfoType) -> String {
+        match val {
+            InfoType::String(s) => s.clone(),
+            InfoType::Block(b) => b.to_command(),
+        }
+    }
+}
+impl From<&InfoType> for String {
+    fn from(val: &InfoType) -> String {
+        match val {
+            InfoType::String(s) => s.clone(),
+            InfoType::Block(b) => b.to_command(),
+        }
+    }
+}
 
 /// Result of executing a single assertion or action
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AssertionResult {
-    /// The tick at which this assertion was executed
-    pub tick: u32,
-
-    /// Whether the assertion succeeded
-    pub success: bool,
-
-    /// Error message if the assertion failed
-    pub error_message: Option<String>,
-
-    /// Position involved in the assertion, if applicable
-    pub position: Option<[i32; 3]>,
-
-    /// Time taken to execute this assertion in milliseconds
-    pub execution_time_ms: Option<u64>,
+pub enum AssertionResult {
+    Success(u32),
+    Failure(AssertFailure),
 }
 
-impl AssertionResult {
-    /// Create a successful assertion result
-    pub fn success(tick: u32) -> Self {
-        Self {
-            tick,
-            success: true,
-            error_message: None,
-            position: None,
-            execution_time_ms: None,
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssertFailure {
+    /// The tick at which this assertion was executed
+    pub tick: u32,
+    /// Error message if the assertion failed
+    pub error_message: String,
+    /// Position involved in the assertion, if applicable
+    pub position: [i32; 3],
+    /// Time taken to execute this assertion in milliseconds
+    pub execution_time_ms: Option<u64>,
+    /// What as expected
+    pub expected: InfoType,
+    /// What was found
+    pub actual: InfoType,
+}
 
+impl AssertFailure {
     /// Create a failed assertion result
-    pub fn failure(tick: u32, error: impl Into<String>) -> Self {
+    pub fn new(
+        tick: u32,
+        error: impl Into<String>,
+        position: [i32; 3],
+        expected: InfoType,
+        actual: InfoType,
+    ) -> AssertFailure {
         Self {
             tick,
-            success: false,
-            error_message: Some(error.into()),
-            position: None,
+            error_message: error.into(),
+            position,
             execution_time_ms: None,
+            expected,
+            actual,
         }
     }
 
     /// Add position information to the assertion result
     pub fn with_position(mut self, pos: [i32; 3]) -> Self {
-        self.position = Some(pos);
+        self.position = pos;
         self
     }
 
     /// Add execution timing information
     pub fn with_timing(mut self, ms: u64) -> Self {
         self.execution_time_ms = Some(ms);
+        self
+    }
+    /// adds the expected and the actual found data
+    pub fn with_expected_actual(mut self, expected: InfoType, actual: InfoType) -> Self {
+        self.actual = actual;
+        self.expected = expected;
         self
     }
 }
@@ -96,11 +145,8 @@ impl TestResult {
 
     /// Add an assertion result to this test result
     pub fn add_assertion(&mut self, assertion: AssertionResult) {
-        if !assertion.success {
+        if let Failure(_) = assertion {
             self.success = false;
-            if self.failure_reason.is_none() {
-                self.failure_reason = assertion.error_message.clone();
-            }
         }
         self.assertions.push(assertion);
     }
@@ -132,12 +178,18 @@ impl TestResult {
 
     /// Get the number of passed assertions
     pub fn passed_count(&self) -> usize {
-        self.assertions.iter().filter(|a| a.success).count()
+        self.assertions
+            .iter()
+            .filter(|a| matches!(a, AssertionResult::Success(_)))
+            .count()
     }
 
     /// Get the number of failed assertions
     pub fn failed_count(&self) -> usize {
-        self.assertions.iter().filter(|a| !a.success).count()
+        self.assertions
+            .iter()
+            .filter(|a| !matches!(a, AssertionResult::Success(_)))
+            .count()
     }
 
     /// Get the total number of assertions
@@ -211,28 +263,37 @@ impl TestSummary {
 mod tests {
     use super::*;
 
+    fn make_success(tick: u32) -> AssertionResult {
+        AssertionResult::Success(tick)
+    }
+
+    fn make_failure(tick: u32, error: &str, position: [i32; 3]) -> AssertionResult {
+        Failure(AssertFailure::new(
+            tick,
+            error,
+            position,
+            InfoType::String("expected".to_string()),
+            InfoType::String("actual".to_string()),
+        ))
+    }
+
     #[test]
     fn test_assertion_result_success() {
-        let result = AssertionResult::success(5)
-            .with_position([1, 2, 3])
-            .with_timing(100);
-
-        assert!(result.success);
-        assert_eq!(result.tick, 5);
-        assert_eq!(result.position, Some([1, 2, 3]));
-        assert_eq!(result.execution_time_ms, Some(100));
-        assert!(result.error_message.is_none());
+        let result = make_success(5);
+        assert!(matches!(result, AssertionResult::Success(5)));
     }
 
     #[test]
     fn test_assertion_result_failure() {
-        let result =
-            AssertionResult::failure(10, "Block mismatch").with_position([5, 6, 7]);
+        let result = make_failure(10, "Block mismatch", [5, 6, 7]);
 
-        assert!(!result.success);
-        assert_eq!(result.tick, 10);
-        assert_eq!(result.error_message, Some("Block mismatch".to_string()));
-        assert_eq!(result.position, Some([5, 6, 7]));
+        if let Failure(f) = result {
+            assert_eq!(f.tick, 10);
+            assert_eq!(f.error_message, "Block mismatch");
+            assert_eq!(f.position, [5, 6, 7]);
+        } else {
+            panic!("Expected Failure variant");
+        }
     }
 
     #[test]
@@ -242,8 +303,8 @@ mod tests {
             .with_execution_time(5000)
             .with_offset([0, 0, 0]);
 
-        result.add_assertion(AssertionResult::success(5));
-        result.add_assertion(AssertionResult::success(10));
+        result.add_assertion(make_success(5));
+        result.add_assertion(make_success(10));
 
         assert!(result.success);
         assert_eq!(result.passed_count(), 2);
@@ -256,28 +317,21 @@ mod tests {
     fn test_test_result_with_failure() {
         let mut result = TestResult::new("test2");
 
-        result.add_assertion(AssertionResult::success(5));
-        result.add_assertion(AssertionResult::failure(
-            10,
-            "Expected stone, got dirt",
-        ));
-        result.add_assertion(AssertionResult::success(15));
+        result.add_assertion(make_success(5));
+        result.add_assertion(make_failure(10, "Expected stone, got dirt", [0, 0, 0]));
+        result.add_assertion(make_success(15));
 
         assert!(!result.success);
         assert_eq!(result.passed_count(), 2);
         assert_eq!(result.failed_count(), 1);
         assert_eq!(result.total_assertions(), 3);
-        assert_eq!(
-            result.failure_reason,
-            Some("Expected stone, got dirt".to_string())
-        );
     }
 
     #[test]
     fn test_test_summary() {
         let result1 = TestResult::new("test1").with_execution_time(1000);
         let mut result2 = TestResult::new("test2").with_execution_time(2000);
-        result2.add_assertion(AssertionResult::failure(5, "Failed"));
+        result2.add_assertion(make_failure(5, "Failed", [0, 0, 0]));
 
         let summary = TestSummary::from_results(vec![result1, result2]);
 

@@ -1,3 +1,4 @@
+pub mod format;
 pub mod index;
 pub mod loader;
 pub mod results;
