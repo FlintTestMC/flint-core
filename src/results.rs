@@ -1,6 +1,8 @@
+use crate::format;
 use crate::results::AssertionResult::Failure;
 use crate::test_spec::Block;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// Outcome of executing a single action
 pub enum ActionOutcome {
@@ -256,6 +258,36 @@ impl TestSummary {
         } else {
             (self.passed_tests as f64 / self.total_tests as f64) * 100.0
         }
+    }
+
+    /// Get total execution time as Duration
+    fn elapsed(&self) -> Duration {
+        Duration::from_millis(self.total_execution_time_ms)
+    }
+
+    /// Print concise summary (default mode)
+    pub fn print_concise_summary(&self) {
+        format::print_concise_summary(&self.results, self.elapsed());
+    }
+
+    /// Print verbose test summary (used in -v mode)
+    pub fn print_test_summary(&self, separator_width: usize) {
+        format::print_test_summary(&self.results, separator_width);
+    }
+
+    /// Print results in JUnit XML format
+    pub fn print_junit(&self) {
+        format::print_junit(&self.results, self.elapsed());
+    }
+
+    /// Print results in TAP (Test Anything Protocol) format
+    pub fn print_tap(&self) {
+        format::print_tap(&self.results);
+    }
+
+    /// Print results as JSON
+    pub fn print_json(&self) {
+        format::print_json(&self.results, self.elapsed());
     }
 }
 
