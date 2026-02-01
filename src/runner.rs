@@ -2,13 +2,15 @@
 //!
 //! The `TestRunner` loads tests and executes them against a server adapter.
 
+use crate::results::{
+    ActionOutcome, AssertFailure, AssertionResult, InfoType, TestResult, TestSummary,
+};
+use crate::test_spec::ActionType;
+use crate::timeline::TimelineAggregate;
 use crate::traits::{BlockData, FlintAdapter, FlintPlayer, FlintWorld, Item, PlayerSlot};
+use crate::{Block, TestSpec};
 use rustc_hash::FxHashMap;
 use std::time::Instant;
-use crate::results::{ActionOutcome, AssertFailure, AssertionResult, InfoType, TestResult, TestSummary};
-use crate::test_spec::ActionType;
-use crate::{Block, TestSpec};
-use crate::timeline::TimelineAggregate;
 
 /// Configuration for test execution
 #[allow(dead_code)]

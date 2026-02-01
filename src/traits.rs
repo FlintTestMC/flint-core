@@ -3,11 +3,11 @@
 //! Servers implement `FlintAdapter` to create test worlds, and `FlintWorld`/`FlintPlayer`
 //! to provide the actual block and player operations.
 
-use std::fmt::{Display, Formatter};
-use rustc_hash::FxHashMap;
-use serde::Serialize;
 pub(crate) use crate::Block;
 pub(crate) use crate::test_spec::{BlockFace, PlayerSlot};
+use rustc_hash::FxHashMap;
+use serde::Serialize;
+use std::fmt::{Display, Formatter};
 
 /// Position in world coordinates [x, y, z]
 pub type BlockPos = [i32; 3];
@@ -25,14 +25,11 @@ impl Item {
     pub fn new(id: impl Into<String>) -> Self {
         let id = id.into();
         if id.starts_with("empty") {
-            return Item::empty()
+            return Item::empty();
         }
-        Self {
-            id,
-            count: 1,
-        }
+        Self { id, count: 1 }
     }
-    
+
     pub fn empty() -> Self {
         Self {
             id: "minecraft:air".to_string(),

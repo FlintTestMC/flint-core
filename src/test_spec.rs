@@ -1,7 +1,7 @@
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -415,7 +415,7 @@ mod tests {
     fn redstone_lever_with_two_properties_command_string() {
         let mut block = Block {
             id: "minecraft:lever".to_string(),
-            properties:  FxHashMap::default(),
+            properties: FxHashMap::default(),
         };
         block
             .properties
@@ -435,7 +435,7 @@ mod tests {
     fn only_id_command_string() {
         let block = Block {
             id: "minecraft:stone".to_string(),
-            properties:  FxHashMap::default(),
+            properties: FxHashMap::default(),
         };
         let result = block.to_command();
         assert_eq!(result, "minecraft:stone");
@@ -444,7 +444,7 @@ mod tests {
     fn empty_id_command_string() {
         let block = Block {
             id: "".to_string(),
-            properties:  FxHashMap::default(),
+            properties: FxHashMap::default(),
         };
         let result = block.to_command();
         assert_eq!(result, "");
@@ -454,7 +454,7 @@ mod tests {
     fn test_redstone_wire() {
         let mut block = Block {
             id: "minecraft:redstone_wire".to_string(),
-            properties:  FxHashMap::default(),
+            properties: FxHashMap::default(),
         };
         block
             .properties
