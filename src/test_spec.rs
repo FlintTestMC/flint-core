@@ -289,7 +289,7 @@ impl TestSpec {
         let setup = self.setup.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Test '{}' missing required 'setup' section", self.name)
         })?;
-        if let None = setup.cleanup {
+        if setup.cleanup.is_none() {
             anyhow::bail!("Test '{}' missing 'cleanup' section", self.name);
         }
         let region = setup.cleanup.as_ref().unwrap().region;

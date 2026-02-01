@@ -228,7 +228,7 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
                     p.select_hotbar(1);
                 }
 
-                p.use_item_on(pos, &face);
+                p.use_item_on(pos, face);
                 ActionOutcome::Action
             }
 
