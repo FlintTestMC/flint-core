@@ -1,0 +1,408 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flint.dev/schemas/test-spec.json",
+  "title": "Flint Test Specification",
+  "description": "Schema for Flint test specification files (.json) used by the test framework",
+  "type": "object",
+  "required": ["name", "timeline"],
+  "properties": {
+    "flintVersion": {
+      "type": "string",
+      "description": "Version of the Flint test specification format"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name of the test"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what the test verifies"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Tags for categorizing and filtering tests"
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Names of tests that must pass before this test can run"
+    },
+    "setup": {
+      "$ref": "#/$defs/SetupSpec",
+      "description": "Setup configuration including cleanup region and player configuration"
+    },
+    "timeline": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/TimelineEntry" },
+      "description": "Sequence of actions to perform during the test"
+    },
+    "breakpoints": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "default": [],
+      "description": "Tick numbers at which to pause execution for debugging"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Coordinate": {
+      "type": "array",
+      "items": { "type": "integer" },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "A 3D coordinate [x, y, z]"
+    },
+    "Region": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Coordinate" },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "A region defined by two coordinates [[minX, minY, minZ], [maxX, maxY, maxZ]]"
+    },
+    "SetupSpec": {
+      "type": "object",
+      "properties": {
+        "cleanup": {
+          "$ref": "#/$defs/CleanupSpec",
+          "description": "Cleanup region configuration"
+        },
+        "player": {
+          "$ref": "#/$defs/PlayerConfig",
+          "description": "Player configuration for initial inventory and hotbar"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CleanupSpec": {
+      "type": "object",
+      "required": ["region"],
+      "properties": {
+        "region": {
+          "$ref": "#/$defs/Region",
+          "description": "The region to clear before and after the test"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlayerSlot": {
+      "type": "string",
+      "enum": [
+        "hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5",
+        "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9",
+        "off_hand",
+        "helmet", "chestplate", "leggings", "boots"
+      ],
+      "description": "Player inventory slot identifier"
+    },
+    "SlotConfig": {
+      "type": "object",
+      "required": ["item"],
+      "properties": {
+        "item": {
+          "type": "string",
+          "description": "Item identifier, e.g., 'minecraft:honeycomb'"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "default": 1,
+          "description": "Stack count"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlayerConfig": {
+      "type": "object",
+      "properties": {
+        "inventory": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/SlotConfig" },
+          "propertyNames": { "$ref": "#/$defs/PlayerSlot" },
+          "default": {},
+          "description": "Initial inventory state (slot name -> item config)"
+        },
+        "selected_hotbar": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9,
+          "default": 1,
+          "description": "Initially selected hotbar slot (1-9)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TickSpec": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "A single tick number"
+        },
+        {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 1,
+          "description": "Multiple tick numbers at which to execute the action"
+        }
+      ],
+      "description": "Tick specification - either a single tick or array of ticks"
+    },
+    "Block": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Block identifier as a string, e.g., 'minecraft:stone' or 'minecraft:lever[powered=true]'"
+        },
+        {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Block identifier, e.g., 'minecraft:lever'"
+            },
+            "properties": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Block state properties as a nested object"
+            }
+          },
+          "additionalProperties": true,
+          "description": "Block with identifier and optional state properties (can be flat or nested under 'properties')"
+        }
+      ],
+      "description": "Block specification - either a string identifier or an object with id and properties"
+    },
+    "BlockFace": {
+      "type": "string",
+      "enum": ["top", "bottom", "north", "south", "east", "west"],
+      "description": "Face of a block"
+    },
+    "BlockPlacement": {
+      "type": "object",
+      "required": ["pos", "block"],
+      "properties": {
+        "pos": {
+          "$ref": "#/$defs/Coordinate",
+          "description": "Position to place the block"
+        },
+        "block": {
+          "$ref": "#/$defs/Block",
+          "description": "Block to place"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BlockCheck": {
+      "type": "object",
+      "required": ["pos", "is"],
+      "properties": {
+        "pos": {
+          "$ref": "#/$defs/Coordinate",
+          "description": "Position to check"
+        },
+        "is": {
+          "$ref": "#/$defs/Block",
+          "description": "Expected block at the position"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TimelineEntry": {
+      "type": "object",
+      "required": ["at", "do"],
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/TickSpec",
+          "description": "Tick(s) at which to execute this action"
+        },
+        "do": {
+          "type": "string",
+          "enum": ["place", "place_each", "fill", "remove", "assert", "use_item_on", "set_slot", "select_hotbar"],
+          "description": "Type of action to perform"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "do": { "const": "place" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "pos": {
+                "$ref": "#/$defs/Coordinate",
+                "description": "Position to place the block"
+              },
+              "block": {
+                "$ref": "#/$defs/Block",
+                "description": "Block to place"
+              }
+            },
+            "required": ["pos", "block"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "place_each" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "blocks": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/BlockPlacement" },
+                "description": "List of blocks to place"
+              }
+            },
+            "required": ["blocks"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "fill" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "region": {
+                "$ref": "#/$defs/Region",
+                "description": "Region to fill"
+              },
+              "with": {
+                "$ref": "#/$defs/Block",
+                "description": "Block to fill the region with"
+              }
+            },
+            "required": ["region", "with"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "remove" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "pos": {
+                "$ref": "#/$defs/Coordinate",
+                "description": "Position of the block to remove"
+              }
+            },
+            "required": ["pos"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "assert" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "checks": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/BlockCheck" },
+                "description": "List of block checks to perform"
+              }
+            },
+            "required": ["checks"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "use_item_on" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "pos": {
+                "$ref": "#/$defs/Coordinate",
+                "description": "Position of the block to interact with"
+              },
+              "face": {
+                "$ref": "#/$defs/BlockFace",
+                "description": "Face of the block to interact with"
+              },
+              "item": {
+                "type": "string",
+                "description": "Item to use (optional, uses player's active item if not specified)"
+              }
+            },
+            "required": ["pos", "face"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "set_slot" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "slot": {
+                "$ref": "#/$defs/PlayerSlot",
+                "description": "Inventory slot to set"
+              },
+              "item": {
+                "type": "string",
+                "description": "Item to put in the slot (omit to clear)"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 64,
+                "default": 1,
+                "description": "Stack count"
+              }
+            },
+            "required": ["slot"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "select_hotbar" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "slot": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9,
+                "description": "Hotbar slot to select (1-9)"
+              }
+            },
+            "required": ["slot"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  }
+}
