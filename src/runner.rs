@@ -182,7 +182,9 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
                             tick: _tick,
                             error_message: format!(
                                 "Block mismatch at {:?}: expected '{}', got '{}'",
-                                pos, check.is.to_command(), actual.to_command(),
+                                pos,
+                                check.is.to_command(),
+                                actual.to_command(),
                             ),
                             position: pos,
                             execution_time_ms: None,
