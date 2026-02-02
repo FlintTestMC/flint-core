@@ -68,7 +68,7 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
 
             // Set initial inventory
             for (slot_name, item) in &player_config.inventory {
-                p.set_slot(*slot_name, Some(&item));
+                p.set_slot(*slot_name, Some(item));
             }
 
             // Set initial hotbar selection
