@@ -5,11 +5,10 @@
 use crate::results::{
     ActionOutcome, AssertFailure, AssertionResult, InfoType, TestResult, TestSummary,
 };
-use crate::test_spec::ActionType;
+use crate::test_spec::{ActionType, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
-use crate::traits::{BlockData, FlintAdapter, FlintPlayer, FlintWorld, Item, PlayerSlot};
+use crate::traits::{FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec};
-use rustc_hash::FxHashMap;
 use std::time::Instant;
 
 /// Configuration for test execution
@@ -68,8 +67,7 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
             let p = player.get_or_insert_with(|| world.create_player());
 
             // Set initial inventory
-            for (slot_name, slot_config) in &player_config.inventory {
-                let item = Item::with_count(&slot_config.item, slot_config.count);
+            for (slot_name, item) in &player_config.inventory {
                 p.set_slot(*slot_name, Some(&item));
             }
 
@@ -180,36 +178,16 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
                     let actual = world.get_block(pos);
 
                     if !block_matches(&actual, &check.is) {
-                        // Convert expected Block properties to BlockData format
-                        let expected_props: FxHashMap<String, String> = check
-                            .is
-                            .properties
-                            .iter()
-                            .filter_map(|(k, v)| {
-                                let value = match v {
-                                    serde_json::Value::String(s) => s.clone(),
-                                    serde_json::Value::Bool(b) => b.to_string(),
-                                    serde_json::Value::Number(n) => n.to_string(),
-                                    _ => return None,
-                                };
-                                Some((k.clone(), value))
-                            })
-                            .collect();
                         return ActionOutcome::AssertFailed(AssertFailure {
                             tick: _tick,
                             error_message: format!(
                                 "Block mismatch at {:?}: expected '{}', got '{}'",
-                                pos,
-                                BlockData::with_properties(&check.is.id, expected_props.clone()),
-                                actual,
+                                pos, check.is.to_command(), actual.to_command(),
                             ),
                             position: pos,
                             execution_time_ms: None,
-                            expected: InfoType::Block(
-                                BlockData::with_properties(&check.is.id, expected_props.clone())
-                                    .into_block(),
-                            ),
-                            actual: InfoType::Block(actual.into_block()),
+                            expected: InfoType::Block(check.is.clone()),
+                            actual: InfoType::Block(actual),
                         });
                     }
                 }
@@ -254,8 +232,8 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
     }
 }
 
-/// Check if actual block matches expected
-fn block_matches(actual: &BlockData, expected: &Block) -> bool {
+/// Check if actual block matches expected.
+fn block_matches(actual: &Block, expected: &Block) -> bool {
     // Check block ID
     if actual.id != expected.id {
         // Also try without minecraft: prefix
@@ -274,24 +252,10 @@ fn block_matches(actual: &BlockData, expected: &Block) -> bool {
         }
     }
 
-    // Check properties if specified
+    // Check properties if specified in expected
     for (key, expected_value) in &expected.properties {
-        // Skip the "properties" key itself (nested format) - it's handled by Block::to_command
-        if key == "properties" {
-            continue;
-        }
-
-        // Convert expected value to string for comparison
-        let expected_str = match expected_value {
-            serde_json::Value::String(s) => s.clone(),
-            serde_json::Value::Bool(b) => b.to_string(),
-            serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::Null => continue, // Skip null values
-            _ => continue,                       // Skip complex types (arrays, objects)
-        };
-
         if let Some(actual_value) = actual.properties.get(key) {
-            if actual_value != &expected_str {
+            if actual_value != expected_value {
                 return false;
             }
         } else {

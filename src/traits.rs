@@ -3,118 +3,11 @@
 //! Servers implement `FlintAdapter` to create test worlds, and `FlintWorld`/`FlintPlayer`
 //! to provide the actual block and player operations.
 
-pub(crate) use crate::Block;
-pub(crate) use crate::test_spec::{BlockFace, PlayerSlot};
-use rustc_hash::FxHashMap;
-use serde::Serialize;
-use std::fmt::{Display, Formatter};
+use crate::Block;
+use crate::test_spec::{BlockFace, Item, PlayerSlot};
 
 /// Position in world coordinates [x, y, z]
 pub type BlockPos = [i32; 3];
-
-/// An item that can be held or placed in a slot
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Item {
-    /// Item identifier, e.g., "minecraft:honeycomb"
-    pub id: String,
-    /// Stack count (default 1)
-    pub count: u8,
-}
-
-impl Item {
-    pub fn new(id: impl Into<String>) -> Self {
-        let id = id.into();
-        if id.starts_with("empty") {
-            return Item::empty();
-        }
-        Self { id, count: 1 }
-    }
-
-    pub fn empty() -> Self {
-        Self {
-            id: "minecraft:air".to_string(),
-            count: 0,
-        }
-    }
-
-    pub fn with_count(id: impl Into<String>, count: u8) -> Self {
-        Self {
-            id: id.into(),
-            count,
-        }
-    }
-}
-
-/// Block data returned from get_block
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BlockData {
-    /// Block identifier, e.g., "minecraft:stone"
-    pub id: String,
-    /// Block state properties, e.g., {"powered": "true", "facing": "north"}
-    pub properties: FxHashMap<String, String>,
-}
-impl Display for BlockData {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.id)?;
-
-        if !self.properties.is_empty() {
-            write!(f, "[")?;
-
-            let mut properties: Vec<_> = self.properties.iter().collect();
-            properties.sort_by_key(|(key, _)| *key);
-
-            for (i, (key, value)) in properties.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}={}", key, value)?;
-            }
-
-            write!(f, "]")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl BlockData {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            properties: FxHashMap::default(),
-        }
-    }
-
-    pub fn with_properties(id: impl Into<String>, properties: FxHashMap<String, String>) -> Self {
-        Self {
-            id: id.into(),
-            properties,
-        }
-    }
-
-    /// Check if this block is air
-    pub fn is_air(&self) -> bool {
-        self.id == "minecraft:air" || self.id == "air"
-    }
-
-    /// Convert to a Block spec
-    pub fn into_block(self) -> Block {
-        Block {
-            id: self.id,
-            properties: self
-                .properties
-                .into_iter()
-                .map(|(k, v)| (k, serde_json::Value::String(v)))
-                .collect(),
-        }
-    }
-}
-
-impl From<BlockData> for Block {
-    fn from(data: BlockData) -> Self {
-        data.into_block()
-    }
-}
 
 /// Server metadata
 #[derive(Debug, Clone)]
@@ -147,7 +40,7 @@ pub trait FlintWorld: Send + Sync {
     fn current_tick(&self) -> u64;
 
     /// Get block at position
-    fn get_block(&self, pos: BlockPos) -> BlockData;
+    fn get_block(&self, pos: BlockPos) -> Block;
 
     /// Set block at position (with neighbor updates)
     fn set_block(&mut self, pos: BlockPos, block: &Block);

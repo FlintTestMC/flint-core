@@ -11,8 +11,8 @@ pub mod utils;
 
 // Re-export main types for convenience
 pub use runner::{TestRunConfig, TestRunner};
-pub use traits::{BlockPos, FlintAdapter, FlintPlayer, FlintWorld, Item, ServerInfo};
+pub use traits::{BlockPos, FlintAdapter, FlintPlayer, FlintWorld, ServerInfo};
 
 // Re-export flint-core types commonly used with this library
 pub use crate::loader::TestLoader;
-pub use crate::test_spec::{Block, TestSpec};
+pub use crate::test_spec::{Block, Item, PlayerSlot, TestSpec};
