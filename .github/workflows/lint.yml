@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Spell Check Repo
-        uses: crate-ci/typos@v1.39.0
+        uses: crate-ci/typos@v1.43.1
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --release --all-features --all-targets
