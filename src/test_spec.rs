@@ -287,7 +287,7 @@ pub enum ActionType {
         block: Block,
     },
     PlaceEach {
-        blocks: Vec<BlockPlacement>,
+        blocks: Vec<BlockAtPos>,
     },
     Fill {
         region: [[i32; 3]; 2],
@@ -299,7 +299,7 @@ pub enum ActionType {
 
     // Assertion actions
     Assert {
-        checks: Vec<BlockCheck>,
+        checks: Vec<BlockAtPos>,
     },
 
     // Player actions (for item interactions)
@@ -332,15 +332,10 @@ fn default_count() -> u8 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockAtPos{
+pub struct BlockAtPos {
     pub pos: [i32; 3],
     pub block: Block,
 }
-
-// TODO make it better
-pub type BlockPlacement = BlockAtPos;
-
-pub type  BlockCheck = BlockAtPos;
 
 impl TestSpec {
     // Maximum allowed test dimensions

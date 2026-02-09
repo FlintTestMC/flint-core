@@ -178,18 +178,18 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
                     let pos = [check.pos[0], check.pos[1], check.pos[2]];
                     let actual = world.get_block(pos);
 
-                    if !block_matches(&actual, &check.is) {
+                    if !block_matches(&actual, &check.block) {
                         return ActionOutcome::AssertFailed(AssertFailure {
                             tick: _tick,
                             error_message: format!(
                                 "Block mismatch at {:?}: expected '{}', got '{}'",
                                 pos,
-                                check.is.to_command(),
+                                check.block.to_command(),
                                 actual.to_command(),
                             ),
                             position: pos,
                             execution_time_ms: None,
-                            expected: InfoType::Block(check.is.clone()),
+                            expected: InfoType::Block(check.block.clone()),
                             actual: InfoType::Block(actual),
                         });
                     }
