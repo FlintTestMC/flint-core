@@ -179,7 +179,10 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
                     let actual = world.get_block(pos);
                     let expected_blocks = check.is.to_vec();
 
-                    if !expected_blocks.iter().any(|expected| block_matches(&actual, expected)) {
+                    if !expected_blocks
+                        .iter()
+                        .any(|expected| block_matches(&actual, expected))
+                    {
                         let expected_str = expected_blocks
                             .iter()
                             .map(|b| b.to_command())
