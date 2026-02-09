@@ -15,12 +15,12 @@ pub struct TestSpec {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
+    pub minecraft_ids: Vec<String>,
+    #[serde(default)]
     pub dependencies: Vec<String>,
     #[serde(default)]
     pub setup: Option<SetupSpec>,
     pub timeline: Vec<TimelineEntry>,
-    #[serde(default)]
-    pub minecraft_ids: Vec<String>,
     #[serde(default)]
     pub breakpoints: Vec<u32>,
 }
