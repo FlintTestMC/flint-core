@@ -280,6 +280,11 @@ impl TestSummary {
         Duration::from_millis(self.total_execution_time_ms)
     }
 
+    /// Format concise summary as a plain string (no ANSI colors)
+    pub fn format_concise_summary(&self) -> String {
+        format::format_concise_summary(&self.results, self.elapsed())
+    }
+
     /// Print concise summary (default mode)
     pub fn print_concise_summary(&self) {
         format::print_concise_summary(&self.results, self.elapsed());

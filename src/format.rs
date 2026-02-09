@@ -222,7 +222,43 @@ pub fn print_test_summary(results: &[TestResult], separator_width: usize) {
     );
 }
 
-/// Print concise summary (default mode)
+/// Format concise summary as a plain string (no ANSI colors)
+pub fn format_concise_summary(results: &[TestResult], elapsed: Duration) -> String {
+    let total = results.len();
+    let total_passed = results.iter().filter(|r| r.success).count();
+    let total_failed = total - total_passed;
+    let secs = elapsed.as_secs_f64();
+
+    let mut out = String::new();
+    out.push('\n');
+    if total_failed == 0 {
+        out.push_str(&format!(
+            "✓ All {} tests passed ({:.3}s)\n",
+            format_number(total),
+            secs
+        ));
+    } else {
+        out.push_str(&format!(
+            "{} of {} tests failed ({:.3}s)\n",
+            format_number(total_failed),
+            format_number(total),
+            secs
+        ));
+        out.push('\n');
+        let failures = extract_failures(results);
+        format_failure_tree(&failures, &mut out);
+        out.push('\n');
+        out.push_str(&format!(
+            "{} passed, {} failed\n",
+            format_number(total_passed),
+            format_number(total_failed)
+        ));
+    }
+    out.push('\n');
+    out
+}
+
+/// Print concise summary (default mode, with colors)
 pub fn print_concise_summary(results: &[TestResult], elapsed: Duration) {
     let total = results.len();
     let total_passed = results.iter().filter(|r| r.success).count();
@@ -314,6 +350,57 @@ impl TreeNode {
             child.failure = Some(detail);
         } else {
             child.insert(&segments[1..], detail);
+        }
+    }
+}
+
+/// Format the failure tree into a string (no ANSI colors)
+fn format_failure_tree(failures: &[(String, AssertFailure)], out: &mut String) {
+    let mut root = TreeNode::new();
+
+    for (name, detail) in failures {
+        let segments: Vec<&str> = name.split('/').collect();
+        root.insert(&segments, detail.clone());
+    }
+
+    let keys: Vec<_> = root.children.keys().cloned().collect();
+    for (i, key) in keys.iter().enumerate() {
+        let is_last = i == keys.len() - 1;
+        let child = root.children.get(key).unwrap();
+        format_tree_node(key, child, "", is_last, out);
+    }
+}
+
+fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, out: &mut String) {
+    let connector = if is_last { "└── " } else { "├── " };
+    let child_prefix = if is_last { "    " } else { "│   " };
+
+    if node.children.is_empty() {
+        if let Some(ref detail) = node.failure {
+            out.push_str(&format!("{}{}{}\n", prefix, connector, name));
+            let detail_connector = if is_last { "    " } else { "│   " };
+            out.push_str(&format!(
+                "{}{}└─ t{}: expected {}, got {} @ ({},{},{})\n",
+                prefix,
+                detail_connector,
+                detail.tick,
+                info_type_to_string(&detail.expected),
+                info_type_to_string(&detail.actual),
+                detail.position[0],
+                detail.position[1],
+                detail.position[2]
+            ));
+        } else {
+            out.push_str(&format!("{}{}{}\n", prefix, connector, name));
+        }
+    } else {
+        out.push_str(&format!("{}{}{}\n", prefix, connector, name));
+        let new_prefix = format!("{}{}", prefix, child_prefix);
+        let keys: Vec<_> = node.children.keys().cloned().collect();
+        for (i, key) in keys.iter().enumerate() {
+            let child_is_last = i == keys.len() - 1;
+            let child = node.children.get(key).unwrap();
+            format_tree_node(key, child, &new_prefix, child_is_last, out);
         }
     }
 }
