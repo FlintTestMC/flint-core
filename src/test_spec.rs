@@ -332,16 +332,15 @@ fn default_count() -> u8 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockPlacement {
+pub struct BlockAtPos{
     pub pos: [i32; 3],
     pub block: Block,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockCheck {
-    pub pos: [i32; 3],
-    pub is: Block,
-}
+// TODO make it better
+pub type BlockPlacement = BlockAtPos;
+
+pub type  BlockCheck = BlockAtPos;
 
 impl TestSpec {
     // Maximum allowed test dimensions
