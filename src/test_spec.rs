@@ -22,8 +22,6 @@ pub struct TestSpec {
     pub setup: Option<SetupSpec>,
     pub timeline: Vec<TimelineEntry>,
     #[serde(default)]
-    pub minecraft_ids: Vec<String>,
-    #[serde(default)]
     pub breakpoints: Vec<u32>,
 }
 
