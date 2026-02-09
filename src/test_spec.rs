@@ -365,12 +365,12 @@ impl TestSpec {
     pub const MAX_HEIGHT: i32 = 384;
     pub const MAX_DEPTH: i32 = 15;
 
-    pub fn from_file(path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn from_file(path: &PathBuf, validate_cleanup:bool) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let spec: TestSpec = serde_json::from_str(&content).map_err(|e| {
             anyhow::anyhow!("{}:{}:{}: {}", path.display(), e.line(), e.column(), e)
         })?;
-        spec.validate()?;
+        spec.validate(validate_cleanup)?;
         Ok(spec)
     }
 
@@ -393,7 +393,7 @@ impl TestSpec {
             .expect("Cleanup region is required but not present")
     }
 
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self, cleanup: bool) -> anyhow::Result<()> {
         // Ensure setup with cleanup is present
         let setup = self.setup.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Test '{}' missing required 'setup' section", self.name)
@@ -402,53 +402,55 @@ impl TestSpec {
             anyhow::bail!("Test '{}' missing 'cleanup' section", self.name);
         }
         let region = setup.cleanup.as_ref().unwrap().region;
-        // let min = region[0];
-        // let max = region[1];
+        if cleanup {
+            let min = region[0];
+            let max = region[1];
 
-        // Calculate dimensions
-        // let width = max[0] - min[0] + 1;
-        // let height = max[1] - min[1] + 1;
-        // let depth = max[2] - min[2] + 1;
+            // Calculate dimensions
+            let width = max[0] - min[0] + 1;
+            let height = max[1] - min[1] + 1;
+            let depth = max[2] - min[2] + 1;
 
-        // // Validate region forms valid bounds
-        // if min[0] > max[0] || min[1] > max[1] || min[2] > max[2] {
-        //     anyhow::bail!(
-        //         "Test '{}': Invalid cleanup region - min coordinates must be <= max coordinates. Got min=[{},{},{}], max=[{},{},{}]",
-        //         self.name,
-        //         min[0],
-        //         min[1],
-        //         min[2],
-        //         max[0],
-        //         max[1],
-        //         max[2]
-        //     );
-        // }
-        //
-        // // Validate dimensions don't exceed max size
-        // if width > Self::MAX_WIDTH {
-        //     anyhow::bail!(
-        //         "Test '{}': Cleanup region width {} exceeds maximum {}",
-        //         self.name,
-        //         width,
-        //         Self::MAX_WIDTH
-        //     );
-        // }
-        // if height > Self::MAX_HEIGHT {
-        //     anyhow::bail!(
-        //         "Test '{}': Cleanup region height {} exceeds maximum {}",
-        //         self.name,
-        //         height,
-        //         Self::MAX_HEIGHT
-        //     );
-        // }
-        // if depth > Self::MAX_DEPTH {
-        //     anyhow::bail!(
-        //         "Test '{}': Cleanup region depth {} exceeds maximum {}",
-        //         self.name,
-        //         depth,
-        //         Self::MAX_DEPTH
-        //     );
-        // }
+            // Validate region forms valid bounds
+            if min[0] > max[0] || min[1] > max[1] || min[2] > max[2] {
+                anyhow::bail!(
+                    "Test '{}': Invalid cleanup region - min coordinates must be <= max coordinates. Got min=[{},{},{}], max=[{},{},{}]",
+                    self.name,
+                    min[0],
+                    min[1],
+                    min[2],
+                    max[0],
+                    max[1],
+                    max[2]
+                );
+            }
+
+            // Validate dimensions don't exceed max size
+            if width > Self::MAX_WIDTH {
+                anyhow::bail!(
+                    "Test '{}': Cleanup region width {} exceeds maximum {}",
+                    self.name,
+                    width,
+                    Self::MAX_WIDTH
+                );
+            }
+            if height > Self::MAX_HEIGHT {
+                anyhow::bail!(
+                    "Test '{}': Cleanup region height {} exceeds maximum {}",
+                    self.name,
+                    height,
+                    Self::MAX_HEIGHT
+                );
+            }
+            if depth > Self::MAX_DEPTH {
+                anyhow::bail!(
+                    "Test '{}': Cleanup region depth {} exceeds maximum {}",
+                    self.name,
+                    depth,
+                    Self::MAX_DEPTH
+                );
+            }
+        }
 
         // Validate all test coordinates are within cleanup region
         for entry in &self.timeline {
