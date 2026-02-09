@@ -177,19 +177,25 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
                 for check in checks {
                     let pos = [check.pos[0], check.pos[1], check.pos[2]];
                     let actual = world.get_block(pos);
+                    let expected_blocks = check.is.to_vec();
 
-                    if !block_matches(&actual, &check.is) {
+                    if !expected_blocks.iter().any(|expected| block_matches(&actual, expected)) {
+                        let expected_str = expected_blocks
+                            .iter()
+                            .map(|b| b.to_command())
+                            .collect::<Vec<_>>()
+                            .join(" or ");
                         return ActionOutcome::AssertFailed(AssertFailure {
                             tick: _tick,
                             error_message: format!(
                                 "Block mismatch at {:?}: expected '{}', got '{}'",
                                 pos,
-                                check.is.to_command(),
+                                expected_str,
                                 actual.to_command(),
                             ),
                             position: pos,
                             execution_time_ms: None,
-                            expected: InfoType::Block(check.is.clone()),
+                            expected: InfoType::Blocks(expected_blocks),
                             actual: InfoType::Block(actual),
                         });
                     }

@@ -338,9 +338,25 @@ pub struct BlockPlacement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum BlockSpec {
+    Single(Block),
+    Multiple(Vec<Block>),
+}
+
+impl BlockSpec {
+    pub fn to_vec(&self) -> Vec<Block> {
+        match self {
+            BlockSpec::Single(b) => vec![b.clone()],
+            BlockSpec::Multiple(v) => v.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockCheck {
     pub pos: [i32; 3],
-    pub is: Block,
+    pub is: BlockSpec,
 }
 
 impl TestSpec {

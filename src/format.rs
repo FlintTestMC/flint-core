@@ -24,6 +24,11 @@ fn info_type_to_string(info: &InfoType) -> String {
     match info {
         InfoType::String(s) => s.clone(),
         InfoType::Block(b) => format!("{:?}", b),
+        InfoType::Blocks(blocks) => blocks
+            .iter()
+            .map(|b| format!("{:?}", b))
+            .collect::<Vec<_>>()
+            .join(" or "),
     }
 }
 

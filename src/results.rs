@@ -18,13 +18,14 @@ pub enum ActionOutcome {
 pub enum InfoType {
     String(String),
     Block(Block),
+    Blocks(Vec<Block>),
 }
 
 impl InfoType {
     pub fn get_string(&self) -> Option<String> {
         match self {
             InfoType::String(s) => Some(s.clone()),
-            InfoType::Block(_) => None,
+            InfoType::Block(_) | InfoType::Blocks(_) => None,
         }
     }
 }
@@ -33,6 +34,11 @@ impl From<InfoType> for String {
         match val {
             InfoType::String(s) => s.clone(),
             InfoType::Block(b) => b.to_command(),
+            InfoType::Blocks(blocks) => blocks
+                .iter()
+                .map(|b| b.to_command())
+                .collect::<Vec<_>>()
+                .join(" or "),
         }
     }
 }
@@ -41,6 +47,11 @@ impl From<&InfoType> for String {
         match val {
             InfoType::String(s) => s.clone(),
             InfoType::Block(b) => b.to_command(),
+            InfoType::Blocks(blocks) => blocks
+                .iter()
+                .map(|b| b.to_command())
+                .collect::<Vec<_>>()
+                .join(" or "),
         }
     }
 }
