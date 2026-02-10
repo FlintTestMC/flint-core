@@ -9,6 +9,7 @@ use crate::test_spec::{ActionType, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec};
+use std::sync::Arc;
 use std::time::Instant;
 
 /// Configuration for test execution
@@ -35,15 +36,14 @@ impl Default for TestRunConfig {
 }
 
 /// Test execution engine
-pub struct TestRunner<'a, A: FlintAdapter> {
-    adapter: &'a A,
-    // is needed for later, to run multiple tests in parallel or have more configs
-    // config: TestRunConfig,
+pub struct TestRunner<A: FlintAdapter> {
+    adapter: Arc<A>,
+    config: TestRunConfig,
 }
 
-impl<'a, A: FlintAdapter> TestRunner<'a, A> {
-    pub fn new(adapter: &'a A) -> Self {
-        Self { adapter }
+impl<A: FlintAdapter> TestRunner<A> {
+    pub fn new(adapter: Arc<A>, config: TestRunConfig) -> Self {
+        Self { adapter, config }
     }
 
     /// Run a single test
@@ -78,12 +78,6 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
 
         // Execute timeline tick by tick
         for tick in 0..=timeline.max_tick {
-            // Check for breakpoints (debug mode)
-            // if self.config.debug_enabled && timeline.breakpoints.contains(&tick) {
-            //     // TODO: Implement breakpoint pause mechanism
-            //     // For now, just continue
-            // }
-
             // Execute actions for this tick
             if let Some(actions) = timeline.timeline.get(&tick) {
                 for (_test_idx, entry, _value_idx) in actions.iter() {
@@ -112,11 +106,43 @@ impl<'a, A: FlintAdapter> TestRunner<'a, A> {
         result
     }
 
-    /// Run multiple tests
+    /// Run multiple tests. Uses parallel execution when `config.parallel` is true.
     pub fn run_tests(&self, specs: &[TestSpec]) -> TestSummary {
-        // For now, run sequentially
-        // TODO: Implement parallel execution
-        let results: Vec<TestResult> = specs.iter().map(|spec| self.run_test(spec)).collect();
+        if !self.config.parallel || specs.len() <= 1 {
+            let results: Vec<TestResult> = specs.iter().map(|spec| self.run_test(spec)).collect();
+            return TestSummary::from_results(results);
+        }
+
+        let num_threads = self.config.max_parallel_worlds.min(
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1),
+        );
+
+        // Split work upfront — each thread gets its own chunk, no shared Mutex
+        let chunk_size = specs.len().div_ceil(num_threads);
+        let chunks: Vec<&[TestSpec]> = specs.chunks(chunk_size).collect();
+
+        let results: Vec<TestResult> = std::thread::scope(|s| {
+            let handles: Vec<_> = chunks
+                .into_iter()
+                .map(|chunk| {
+                    let runner = TestRunner::new(self.adapter.clone(), self.config.clone());
+                    s.spawn(move || {
+                        chunk
+                            .iter()
+                            .map(|spec| runner.run_test(spec))
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+
+            handles
+                .into_iter()
+                .flat_map(|h| h.join().unwrap())
+                .collect()
+        });
+
         TestSummary::from_results(results)
     }
 

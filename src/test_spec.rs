@@ -365,7 +365,7 @@ impl TestSpec {
     pub const MAX_HEIGHT: i32 = 384;
     pub const MAX_DEPTH: i32 = 15;
 
-    pub fn from_file(path: &PathBuf, validate_cleanup:bool) -> anyhow::Result<Self> {
+    pub fn from_file(path: &PathBuf, validate_cleanup: bool) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let spec: TestSpec = serde_json::from_str(&content).map_err(|e| {
             anyhow::anyhow!("{}:{}:{}: {}", path.display(), e.line(), e.column(), e)
