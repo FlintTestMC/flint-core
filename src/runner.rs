@@ -108,41 +108,7 @@ impl<A: FlintAdapter> TestRunner<A> {
 
     /// Run multiple tests. Uses parallel execution when `config.parallel` is true.
     pub fn run_tests(&self, specs: &[TestSpec]) -> TestSummary {
-        if !self.config.parallel || specs.len() <= 1 {
-            let results: Vec<TestResult> = specs.iter().map(|spec| self.run_test(spec)).collect();
-            return TestSummary::from_results(results);
-        }
-
-        let num_threads = self.config.max_parallel_worlds.min(
-            std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(1),
-        );
-
-        // Split work upfront — each thread gets its own chunk, no shared Mutex
-        let chunk_size = specs.len().div_ceil(num_threads);
-        let chunks: Vec<&[TestSpec]> = specs.chunks(chunk_size).collect();
-
-        let results: Vec<TestResult> = std::thread::scope(|s| {
-            let handles: Vec<_> = chunks
-                .into_iter()
-                .map(|chunk| {
-                    let runner = TestRunner::new(self.adapter.clone(), self.config.clone());
-                    s.spawn(move || {
-                        chunk
-                            .iter()
-                            .map(|spec| runner.run_test(spec))
-                            .collect::<Vec<_>>()
-                    })
-                })
-                .collect();
-
-            handles
-                .into_iter()
-                .flat_map(|h| h.join().unwrap())
-                .collect()
-        });
-
+        let results: Vec<TestResult> = specs.iter().map(|spec| self.run_test(spec)).collect();
         TestSummary::from_results(results)
     }
 
