@@ -38,12 +38,12 @@ impl Default for TestRunConfig {
 /// Test execution engine
 pub struct TestRunner<A: FlintAdapter> {
     adapter: Arc<A>,
-    config: TestRunConfig,
+    // config: TestRunConfig,
 }
 
 impl<A: FlintAdapter> TestRunner<A> {
-    pub fn new(adapter: Arc<A>, config: TestRunConfig) -> Self {
-        Self { adapter, config }
+    pub fn new(adapter: Arc<A>) -> Self {
+        Self { adapter }
     }
 
     /// Run a single test
