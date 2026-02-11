@@ -309,8 +309,8 @@ impl TestSummary {
     pub fn print_json(&self) {
         format::print_json(&self.results, self.elapsed());
     }
-    pub fn print_ci(&self) {
-        format::print_ci(&self.results);
+    pub fn create_ci_output(&self) -> String {
+        format::create_ci_output(&self.results)
     }
 }
 
