@@ -309,8 +309,9 @@ impl TestSummary {
     pub fn print_json(&self) {
         format::print_json(&self.results, self.elapsed());
     }
-    pub fn create_ci_output(&self) -> String {
-        format::create_ci_output(&self.results)
+    /// returns the json. empty if true also tests without a minecraft id will be returned.
+    pub fn create_ci_output(&self, empty: bool) -> String {
+        format::create_ci_output(&self.results, empty)
     }
 }
 

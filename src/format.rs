@@ -293,10 +293,10 @@ pub fn print_concise_summary(results: &[TestResult], elapsed: Duration) {
     println!();
 }
 
-pub fn create_ci_output(results: &[TestResult]) -> String {
+pub fn create_ci_output(results: &[TestResult], empty: bool) -> String {
     let test_objects: Vec<serde_json::Value> = results
         .iter()
-        .filter(|r| !r.minecraft_ids.is_empty())
+        .filter(|r| empty || !r.minecraft_ids.is_empty())
         .map(|r| {
             serde_json::json!({
                 "name": r.test_name,
