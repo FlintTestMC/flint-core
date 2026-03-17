@@ -1,7 +1,9 @@
-use crate::test_spec::TestSpec;
+use crate::test_spec::MinimalTestSpec;
+use rayon::prelude::*;
+use rustc_hash::{FxHashSet, FxHasher};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string_pretty;
-use std::collections::{BTreeMap, hash_map::DefaultHasher};
+use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions, create_dir_all};
 use std::hash::{Hash, Hasher};
 use std::io::{BufReader, Write};
@@ -120,27 +122,42 @@ impl Index {
     /// * `DEFAULT_TAG` - Tag assigned to tests with no tags (default: "default")
     pub fn generate_index(&mut self, all_files: &Vec<PathBuf>) -> anyhow::Result<()> {
         let hash = get_hash(all_files);
+        let default_tag = get_default_tag();
 
-        for i in all_files {
-            let file = File::open(i.clone())?;
-            let reader = BufReader::new(file);
-            let test: TestSpec = serde_json::from_reader(reader).map_err(|e| {
-                anyhow::anyhow!("{}:{}:{}: {}", i.display(), e.line(), e.column(), e)
-            })?;
-            // Add test to all tags
+        // Phase 1: parse all files in parallel
+        let parsed: Vec<anyhow::Result<(PathBuf, MinimalTestSpec)>> = all_files
+            .par_iter()
+            .map(|i| {
+                let file = File::open(i)?;
+                let reader = BufReader::new(file);
+                let test: MinimalTestSpec = serde_json::from_reader(reader).map_err(|e| {
+                    anyhow::anyhow!("{}:{}:{}: {}", i.display(), e.line(), e.column(), e)
+                })?;
+                Ok((i.clone(), test))
+            })
+            .collect();
+
+        // Phase 2: merge into BTreeMap (sequential, cheap)
+        for result in parsed {
+            let (i, test) = result?;
+            let path_str = i.to_string_lossy().into_owned();
             for tag in &test.tags {
                 self.index
                     .entry(tag.clone())
                     .or_default()
-                    .push(i.to_string_lossy().parse()?);
+                    .push(path_str.clone());
             }
-
-            // add test to default tag if no tag specified
+            for id in &test.minecraft_ids {
+                self.index
+                    .entry(id.clone())
+                    .or_default()
+                    .push(path_str.clone());
+            }
             if test.tags.is_empty() {
                 self.index
-                    .entry(get_default_tag())
+                    .entry(default_tag.clone())
                     .or_default()
-                    .push(i.to_string_lossy().parse()?);
+                    .push(path_str);
             }
         }
 
@@ -164,16 +181,16 @@ impl Index {
     /// * `INDEX_NAME` - Path to the index cache file (default: ".cache/index.json")
     /// * `DEFAULT_TAG` - Tag assigned to tests with no tags (default: "default")
     pub fn get_test_paths_from_scopes(&self, scope: &[String]) -> anyhow::Result<Vec<PathBuf>> {
-        let mut test_paths = vec![];
+        let mut test_paths: Vec<PathBuf> = Vec::new();
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
         for tag in scope {
-            if !self.index.contains_key(tag) {
-                return Err(anyhow::anyhow!("Tag '{}' not found in index", tag));
-            } else {
-                let paths = self.index.get(tag).unwrap();
-                for path in paths {
-                    // would load the same test more than once if the test will be in more scopes
-                    if !test_paths.contains(&PathBuf::from(path)) {
-                        test_paths.push(PathBuf::from(path));
+            match self.index.get(tag) {
+                None => return Err(anyhow::anyhow!("Tag '{}' not found in index", tag)),
+                Some(paths) => {
+                    for path in paths {
+                        if seen.insert(path.as_str()) {
+                            test_paths.push(PathBuf::from(path));
+                        }
                     }
                 }
             }
@@ -192,8 +209,16 @@ impl Index {
 ///
 /// The calculated hash as u64
 pub(crate) fn get_hash(vec: &Vec<PathBuf>) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    vec.hash(&mut hasher);
+    let mut hasher = FxHasher::default();
+    vec.len().hash(&mut hasher);
+    for path in vec {
+        path.hash(&mut hasher);
+        if let Ok(meta) = std::fs::metadata(path)
+            && let Ok(mtime) = meta.modified()
+        {
+            mtime.hash(&mut hasher);
+        }
+    }
     hasher.finish()
 }
 
@@ -209,7 +234,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn generate_index_and_return_index(temp_dir: TempDir) -> String {
+    fn generate_index_and_return_index(temp_dir: TempDir) -> serde_json::Value {
         let index_path = temp_dir.path().join("index.json");
         let mut index = Index::empty();
         let files = TestLoader::collect_test_files(temp_dir.path(), true).unwrap();
@@ -218,7 +243,8 @@ mod tests {
         println!("new: {}", env::current_dir().unwrap().display());
         index.index_name = "./index.json".to_string();
         index.generate_index(relative.as_ref()).unwrap();
-        fs::read_to_string(&index_path).expect("Could not read index file")
+        let content = fs::read_to_string(&index_path).expect("Could not read index file");
+        serde_json::from_str(&content).unwrap()
     }
 
     #[test]
@@ -240,10 +266,14 @@ mod tests {
         create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
 
         // Generate the index and test!
+        let v = generate_index_and_return_index(temp_dir);
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            generate_index_and_return_index(temp_dir),
-            "{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}"
-        )
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
+        );
     }
     #[test]
     #[serial]
@@ -263,18 +293,13 @@ mod tests {
         fs::create_dir(&sub_dir2).unwrap();
         create_non_tagged_file(&sub_dir2, "test3.json");
 
+        let v = generate_index_and_return_index(temp_dir);
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 8180331397721424639,
-  "index": {
-    "default": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            generate_index_and_return_index(temp_dir)
+            v["index"],
+            serde_json::json!({
+                "default": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
     }
 
@@ -300,21 +325,14 @@ mod tests {
         fs::create_dir(&sub_dir2).unwrap();
         create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
 
+        let v = generate_index_and_return_index(temp_dir);
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 8180331397721424639,
-  "index": {
-    "test": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ],
-    "test3": [
-      "./subdir1/test2.json"
-    ]
-  }
-}"#,
-            generate_index_and_return_index(temp_dir)
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"],
+                "test3": ["./subdir1/test2.json"]
+            })
         );
     }
 
@@ -337,18 +355,13 @@ mod tests {
         create_tagged_file(&sub_dir2, "test3.json", &["".to_string()]);
         create_tagged_file(&sub_dir2, "test4.jsonnet", &["".to_string()]);
 
+        let v = generate_index_and_return_index(temp_dir);
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 8180331397721424639,
-  "index": {
-    "": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            generate_index_and_return_index(temp_dir)
+            v["index"],
+            serde_json::json!({
+                "": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
     }
 
@@ -377,26 +390,16 @@ mod tests {
         create_tagged_file(&sub_dir2, "test3.json", &["test".to_string()]);
         create_tagged_file(&sub_dir2, "test4.jsonnet", &["".to_string()]);
 
+        let v = generate_index_and_return_index(temp_dir);
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 7554943804477038552,
-  "index": {
-    "default": [
-      "./subdir1/test3.json",
-      "./test2.json"
-    ],
-    "test": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json"
-    ],
-    "test1": [
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            generate_index_and_return_index(temp_dir)
-        )
+            v["index"],
+            serde_json::json!({
+                "default": ["./subdir1/test3.json", "./test2.json"],
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json"],
+                "test1": ["./subdir1/test2.json", "./test1.json"]
+            })
+        );
     }
 
     #[test]
@@ -419,7 +422,9 @@ mod tests {
         let relative = to_relative_path(temp_dir.path(), &files);
 
         assert_eq!(files.len(), 3);
-        assert_eq!(get_hash(&relative), 8180331397721424639);
+        let h1 = get_hash(&relative);
+        assert_ne!(h1, 0);
+        assert_eq!(h1, get_hash(&relative));
     }
 
     #[test]
@@ -443,6 +448,8 @@ mod tests {
         let relative = to_relative_path(temp_dir.path(), &files);
 
         assert_eq!(files.len(), 3);
-        assert_eq!(get_hash(&relative), 8180331397721424639);
+        let h1 = get_hash(&relative);
+        assert_ne!(h1, 0);
+        assert_eq!(h1, get_hash(&relative));
     }
 }
