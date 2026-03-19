@@ -488,7 +488,7 @@ impl TestSpec {
     /// Two-phase load: checks `flintVersion` before full deserialization.
     ///
     /// Pass `impl_version = None` to skip version checking (treat as "supports all").
-    pub fn try_load(json: &str, req: VersionReq) -> Result<TestSpecLoadResult, serde_json::Error> {
+    pub fn try_load(json: &str, req: VersionReq, validate_cleanup: bool) -> anyhow::Result<TestSpecLoadResult> {
         use serde::Deserialize;
         let value: serde_json::Value = serde_json::from_str(json)?;
         let minimal = MinimalTestSpec::deserialize(&value)?;
@@ -503,6 +503,7 @@ impl TestSpec {
             });
         }
         let spec = TestSpec::deserialize(value)?;
+        spec.validate(validate_cleanup)?;
         Ok(TestSpecLoadResult::Loaded(spec))
     }
 
@@ -611,7 +612,7 @@ impl TestSpec {
                             AssertType::Block(block) => {
                                 self.validate_position(block.pos, &region)?
                             }
-                            &AssertType::Inventory(_) => todo!(),
+                            AssertType::Inventory(_) => todo!(),
                         }
                     }
                 }

@@ -125,11 +125,11 @@ impl TestLoader {
 
     /// Load and version-check test specs from a list of paths.
     /// Uses the crate's PROTOCOL_VERSION to filter incompatible tests.
-    pub fn load_specs(&self, paths: &[PathBuf]) -> Result<Vec<TestSpecLoadResult>> {
+    pub fn load_specs(&self, paths: &[PathBuf], validate_cleanup: bool) -> Result<Vec<TestSpecLoadResult>> {
         let mut results = Vec::new();
         for path in paths {
             let json = std::fs::read_to_string(path)?;
-            let result = TestSpec::try_load(&json, get_supported_version())
+            let result = TestSpec::try_load(&json, get_supported_version(), validate_cleanup)
                 .map_err(|e| anyhow::anyhow!("Failed to parse {}: {}", path.display(), e))?;
             results.push(result);
         }
@@ -138,16 +138,16 @@ impl TestLoader {
 
     /// Collect all test files and load them with version checking.
     /// Convenience wrapper around `collect_all_test_files` + `load_specs`.
-    pub fn load_all_specs(&self) -> anyhow::Result<Vec<TestSpecLoadResult>> {
+    pub fn load_all_specs(&self, validate_cleanup: bool) -> Result<Vec<TestSpecLoadResult>> {
         let paths = self.collect_all_test_files()?;
-        self.load_specs(&paths)
+        self.load_specs(&paths, validate_cleanup)
     }
 
     /// Collect test files by tags and load them with version checking.
     /// Convenience wrapper around `collect_by_tags` + `load_specs`.
-    pub fn load_specs_by_tags(&self, tags: &[String]) -> anyhow::Result<Vec<TestSpecLoadResult>> {
+    pub fn load_specs_by_tags(&self, tags: &[String], validate_cleanup: bool) -> Result<Vec<TestSpecLoadResult>> {
         let paths = self.collect_by_tags(tags)?;
-        self.load_specs(&paths)
+        self.load_specs(&paths, validate_cleanup)
     }
 
     /// Collect JSON files from immediate directory only (non-recursive)
@@ -834,7 +834,7 @@ mod tests {
             let mut out = Vec::new();
             for p in &paths {
                 let json = fs::read_to_string(p).unwrap();
-                let r = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap()).unwrap();
+                let r = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap(), false).unwrap();
                 out.push(r);
             }
             out
@@ -865,7 +865,7 @@ mod tests {
         let _d = DirGuard::change_to(temp_dir.path());
 
         let json = fs::read_to_string(&path).unwrap();
-        let result = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap()).unwrap();
+        let result = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap(), false).unwrap();
 
         assert!(
             matches!(result, TestSpecLoadResult::Loaded(_)),
@@ -890,7 +890,7 @@ mod tests {
         let _d = DirGuard::change_to(temp_dir.path());
 
         let json = fs::read_to_string(&path).unwrap();
-        let result = TestSpec::try_load(&json, VersionReq::parse("<=1.0.0").unwrap()).unwrap();
+        let result = TestSpec::try_load(&json, VersionReq::parse("<=1.0.0").unwrap(), false).unwrap();
 
         assert!(
             matches!(result, TestSpecLoadResult::Loaded(_)),
@@ -916,7 +916,7 @@ mod tests {
         let _d = DirGuard::change_to(temp_dir.path());
 
         let loader = TestLoader::new(Path::new("."), true).unwrap();
-        let results = loader.load_all_specs().unwrap();
+        let results = loader.load_all_specs(false).unwrap();
 
         assert_eq!(results.len(), 1);
         assert!(
@@ -943,7 +943,7 @@ mod tests {
         let _d = DirGuard::change_to(temp_dir.path());
 
         let loader = TestLoader::new(Path::new("."), true).unwrap();
-        let results = loader.load_specs_by_tags(&["unit".to_string()]).unwrap();
+        let results = loader.load_specs_by_tags(&["unit".to_string()], false).unwrap();
 
         assert_eq!(results.len(), 1);
         assert!(
