@@ -19,5 +19,5 @@ pub use crate::loader::TestLoader;
 pub use crate::test_spec::{Block, Item, PlayerSlot, TestSpec, TestSpecLoadResult};
 
 pub fn get_supported_version() -> VersionReq {
-    VersionReq::parse("<=1.1.0").unwrap()
+    VersionReq::parse("<=1.0.0").unwrap()
 }

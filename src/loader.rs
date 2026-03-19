@@ -1,4 +1,9 @@
-use crate::{get_supported_version, index::Index, test_spec::{TestSpec, TestSpecLoadResult}, utils::is_json_file};
+use crate::{
+    get_supported_version,
+    index::Index,
+    test_spec::{TestSpec, TestSpecLoadResult},
+    utils::is_json_file,
+};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -185,9 +190,9 @@ mod tests {
         DirGuard, create_empty_file, create_non_tagged_file, create_tagged_file,
         create_test_file_with_content,
     };
+    use semver::VersionReq;
     use serial_test::serial;
     use std::{env, fs};
-    use semver::VersionReq;
     use tempfile::TempDir;
 
     #[test]

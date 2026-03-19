@@ -1,10 +1,10 @@
 use rustc_hash::FxHashMap;
+use semver::{Version, VersionReq};
 use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
-use semver::{Version, VersionReq};
 
 /// Lightweight header parsed before full deserialization.
 /// Used for version gating and test indexing.
@@ -432,16 +432,6 @@ pub struct BlockCheck {
     pub is: BlockSpec,
 }
 
-/// Parse a "major.minor.patch" version string into a comparable tuple.
-/// Missing components default to 0.
-pub fn parse_version(v: &str) -> (u64, u64, u64) {
-    let mut parts = v.splitn(3, '.');
-    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let patch = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    (major, minor, patch)
-}
-
 /// Result of a two-phase test spec load
 pub enum TestSpecLoadResult {
     Loaded(TestSpec),
@@ -450,6 +440,8 @@ pub enum TestSpecLoadResult {
         reason: String,
     },
 }
+
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InventoryCheck {
     pub slot: PlayerSlot,
@@ -496,20 +488,16 @@ impl TestSpec {
     /// Two-phase load: checks `flintVersion` before full deserialization.
     ///
     /// Pass `impl_version = None` to skip version checking (treat as "supports all").
-    pub fn try_load(
-        json: &str,
-        req: VersionReq
-    ) -> Result<TestSpecLoadResult, serde_json::Error> {
+    pub fn try_load(json: &str, req: VersionReq) -> Result<TestSpecLoadResult, serde_json::Error> {
         use serde::Deserialize;
         let value: serde_json::Value = serde_json::from_str(json)?;
         let minimal = MinimalTestSpec::deserialize(&value)?;
         let ver = Version::parse(&minimal.flint_version).unwrap_or(Version::new(0, 0, 0));
-        if !req.matches(&ver)
-        {
+        if !req.matches(&ver) {
             return Ok(TestSpecLoadResult::Skipped {
                 reason: format!(
                     "requires flint_version {}, implementation supports {}",
-                    ver.to_string(), ver.to_string()
+                    ver, ver
                 ),
                 spec: minimal,
             });
