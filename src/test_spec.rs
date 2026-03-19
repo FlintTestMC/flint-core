@@ -377,16 +377,6 @@ pub struct BlockCheck {
     pub is: BlockSpec,
 }
 
-/// Parse a "major.minor.patch" version string into a comparable tuple.
-/// Missing components default to 0.
-pub fn parse_version(v: &str) -> (u64, u64, u64) {
-    let mut parts = v.splitn(3, '.');
-    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let patch = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    (major, minor, patch)
-}
-
 /// Result of a two-phase test spec load
 pub enum TestSpecLoadResult {
     Loaded(TestSpec),
