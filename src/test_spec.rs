@@ -441,7 +441,6 @@ pub enum TestSpecLoadResult {
     },
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InventoryCheck {
     pub slot: PlayerSlot,
@@ -488,7 +487,11 @@ impl TestSpec {
     /// Two-phase load: checks `flintVersion` before full deserialization.
     ///
     /// Pass `impl_version = None` to skip version checking (treat as "supports all").
-    pub fn try_load(json: &str, req: VersionReq, validate_cleanup: bool) -> anyhow::Result<TestSpecLoadResult> {
+    pub fn try_load(
+        json: &str,
+        req: VersionReq,
+        validate_cleanup: bool,
+    ) -> anyhow::Result<TestSpecLoadResult> {
         use serde::Deserialize;
         let value: serde_json::Value = serde_json::from_str(json)?;
         let minimal = MinimalTestSpec::deserialize(&value)?;
@@ -612,7 +615,8 @@ impl TestSpec {
                             AssertType::Block(block) => {
                                 self.validate_position(block.pos, &region)?
                             }
-                            AssertType::Inventory(_) => todo!(),
+                            // Inventory checks are not validated because there are not any boundings
+                            AssertType::Inventory(_) => {}
                         }
                     }
                 }
