@@ -1,9 +1,4 @@
-use crate::{
-    PROTOCOL_VERSION,
-    index::Index,
-    test_spec::{TestSpec, TestSpecLoadResult},
-    utils::is_json_file,
-};
+use crate::{get_supported_version, index::Index, test_spec::{TestSpec, TestSpecLoadResult}, utils::is_json_file};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -125,15 +120,11 @@ impl TestLoader {
 
     /// Load and version-check test specs from a list of paths.
     /// Uses the crate's PROTOCOL_VERSION to filter incompatible tests.
-    pub fn load_specs(&self, paths: &[PathBuf]) -> anyhow::Result<Vec<TestSpecLoadResult>> {
-        let version_str = format!(
-            "{}.{}.{}",
-            PROTOCOL_VERSION.0, PROTOCOL_VERSION.1, PROTOCOL_VERSION.2
-        );
+    pub fn load_specs(&self, paths: &[PathBuf]) -> Result<Vec<TestSpecLoadResult>> {
         let mut results = Vec::new();
         for path in paths {
             let json = std::fs::read_to_string(path)?;
-            let result = TestSpec::try_load(&json, Some(&version_str))
+            let result = TestSpec::try_load(&json, get_supported_version())
                 .map_err(|e| anyhow::anyhow!("Failed to parse {}: {}", path.display(), e))?;
             results.push(result);
         }
@@ -196,6 +187,7 @@ mod tests {
     };
     use serial_test::serial;
     use std::{env, fs};
+    use semver::VersionReq;
     use tempfile::TempDir;
 
     #[test]
@@ -820,14 +812,10 @@ mod tests {
         // Build loader manually using just the path (bypassing index which needs tagged files)
         let results = {
             let paths = vec![path];
-            let version_str = format!(
-                "{}.{}.{}",
-                PROTOCOL_VERSION.0, PROTOCOL_VERSION.1, PROTOCOL_VERSION.2
-            );
             let mut out = Vec::new();
             for p in &paths {
                 let json = fs::read_to_string(p).unwrap();
-                let r = TestSpec::try_load(&json, Some(&version_str)).unwrap();
+                let r = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap()).unwrap();
                 out.push(r);
             }
             out
@@ -857,12 +845,8 @@ mod tests {
         unsafe { env::set_var("INDEX_NAME", "./".to_owned() + index_name) };
         let _d = DirGuard::change_to(temp_dir.path());
 
-        let version_str = format!(
-            "{}.{}.{}",
-            PROTOCOL_VERSION.0, PROTOCOL_VERSION.1, PROTOCOL_VERSION.2
-        );
         let json = fs::read_to_string(&path).unwrap();
-        let result = TestSpec::try_load(&json, Some(&version_str)).unwrap();
+        let result = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap()).unwrap();
 
         assert!(
             matches!(result, TestSpecLoadResult::Loaded(_)),
@@ -886,12 +870,8 @@ mod tests {
         unsafe { env::set_var("INDEX_NAME", "./".to_owned() + index_name) };
         let _d = DirGuard::change_to(temp_dir.path());
 
-        let version_str = format!(
-            "{}.{}.{}",
-            PROTOCOL_VERSION.0, PROTOCOL_VERSION.1, PROTOCOL_VERSION.2
-        );
         let json = fs::read_to_string(&path).unwrap();
-        let result = TestSpec::try_load(&json, Some(&version_str)).unwrap();
+        let result = TestSpec::try_load(&json, VersionReq::parse("<=1.0.0").unwrap()).unwrap();
 
         assert!(
             matches!(result, TestSpecLoadResult::Loaded(_)),
@@ -906,7 +886,7 @@ mod tests {
         let content = r#"{
             "name": "future-test",
             "description": "requires future version",
-            "flintVersion": "2.0.0",
+            "flintVersion": "99.0.0",
             "tags": ["unit"],
             "timeline": []
         }"#;
@@ -922,7 +902,7 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(
             matches!(results[0], TestSpecLoadResult::Skipped { .. }),
-            "expected Skipped for flintVersion 2.0.0"
+            "expected Skipped for flintVersion 99.0.0"
         );
     }
 
