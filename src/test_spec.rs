@@ -1,10 +1,10 @@
 use rustc_hash::FxHashMap;
+use semver::{Version, VersionReq};
 use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::path::PathBuf;
-use semver::{Version, VersionReq};
 
 /// Lightweight header parsed before full deserialization.
 /// Used for version gating and test indexing.
@@ -414,20 +414,16 @@ impl TestSpec {
     /// Two-phase load: checks `flintVersion` before full deserialization.
     ///
     /// Pass `impl_version = None` to skip version checking (treat as "supports all").
-    pub fn try_load(
-        json: &str,
-        req: VersionReq
-    ) -> Result<TestSpecLoadResult, serde_json::Error> {
+    pub fn try_load(json: &str, req: VersionReq) -> Result<TestSpecLoadResult, serde_json::Error> {
         use serde::Deserialize;
         let value: serde_json::Value = serde_json::from_str(json)?;
         let minimal = MinimalTestSpec::deserialize(&value)?;
         let ver = Version::parse(&minimal.flint_version).unwrap_or(Version::new(0, 0, 0));
-        if !req.matches(&ver)
-        {
+        if !req.matches(&ver) {
             return Ok(TestSpecLoadResult::Skipped {
                 reason: format!(
                     "requires flint_version {}, implementation supports {}",
-                    ver.to_string(), ver.to_string()
+                    ver, ver
                 ),
                 spec: minimal,
             });

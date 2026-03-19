@@ -1,4 +1,9 @@
-use crate::{get_supported_version, index::Index, test_spec::{TestSpec, TestSpecLoadResult}, utils::is_json_file};
+use crate::{
+    get_supported_version,
+    index::Index,
+    test_spec::{TestSpec, TestSpecLoadResult},
+    utils::is_json_file,
+};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -185,9 +190,9 @@ mod tests {
         DirGuard, create_empty_file, create_non_tagged_file, create_tagged_file,
         create_test_file_with_content,
     };
+    use semver::VersionReq;
     use serial_test::serial;
     use std::{env, fs};
-    use semver::VersionReq;
     use tempfile::TempDir;
 
     #[test]
@@ -386,7 +391,7 @@ mod tests {
         let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
         let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
         assert!(v["hash"].as_u64().unwrap() > 0);
-        assert_eq!(
+              assert_eq!(
             v["index"],
             serde_json::json!({
                 "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
@@ -789,6 +794,147 @@ mod tests {
             serde_json::json!({
                 "test": ["./subdir1/test2.json", "./test1.json"]
             })
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_specs_skips_higher_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let content = r#"{
+            "name": "future-test",
+            "description": "requires future version",
+            "flintVersion": "2.0.0",
+            "tags": ["unit"],
+            "timeline": []
+        }"#;
+        let path = create_test_file_with_content(temp_dir.path(), "future.json", content);
+
+        let index_name = "index.json";
+        unsafe { env::set_var("INDEX_NAME", "./".to_owned() + index_name) };
+        let _d = DirGuard::change_to(temp_dir.path());
+
+        // Build loader manually using just the path (bypassing index which needs tagged files)
+        let results = {
+            let paths = vec![path];
+            let mut out = Vec::new();
+            for p in &paths {
+                let json = fs::read_to_string(p).unwrap();
+                let r = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap()).unwrap();
+                out.push(r);
+            }
+            out
+        };
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            matches!(results[0], TestSpecLoadResult::Skipped { .. }),
+            "expected Skipped for flintVersion 2.0.0"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_specs_loads_matching_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let content = r#"{
+            "name": "current-test",
+            "description": "matches current version",
+            "flintVersion": "1.0.0",
+            "tags": ["unit"],
+            "timeline": []
+        }"#;
+        let path = create_test_file_with_content(temp_dir.path(), "current.json", content);
+
+        let index_name = "index.json";
+        unsafe { env::set_var("INDEX_NAME", "./".to_owned() + index_name) };
+        let _d = DirGuard::change_to(temp_dir.path());
+
+        let json = fs::read_to_string(&path).unwrap();
+        let result = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap()).unwrap();
+
+        assert!(
+            matches!(result, TestSpecLoadResult::Loaded(_)),
+            "expected Loaded for flintVersion 1.0.0"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_specs_loads_no_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let content = r#"{
+            "name": "no-version-test",
+            "description": "no flintVersion field",
+            "tags": ["unit"],
+            "timeline": []
+        }"#;
+        let path = create_test_file_with_content(temp_dir.path(), "nover.json", content);
+
+        let index_name = "index.json";
+        unsafe { env::set_var("INDEX_NAME", "./".to_owned() + index_name) };
+        let _d = DirGuard::change_to(temp_dir.path());
+
+        let json = fs::read_to_string(&path).unwrap();
+        let result = TestSpec::try_load(&json, VersionReq::parse("<=1.0.0").unwrap()).unwrap();
+
+        assert!(
+            matches!(result, TestSpecLoadResult::Loaded(_)),
+            "expected Loaded when no flintVersion"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_all_specs_skips_higher_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let content = r#"{
+            "name": "future-test",
+            "description": "requires future version",
+            "flintVersion": "99.0.0",
+            "tags": ["unit"],
+            "timeline": []
+        }"#;
+        create_test_file_with_content(temp_dir.path(), "future.json", content);
+
+        let index_name = "index.json";
+        unsafe { env::set_var("INDEX_NAME", "./".to_owned() + index_name) };
+        let _d = DirGuard::change_to(temp_dir.path());
+
+        let loader = TestLoader::new(Path::new("."), true).unwrap();
+        let results = loader.load_all_specs().unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            matches!(results[0], TestSpecLoadResult::Skipped { .. }),
+            "expected Skipped for flintVersion 99.0.0"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_specs_by_tags_skips_higher_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let content = r#"{
+            "name": "future-tagged-test",
+            "description": "requires future version",
+            "flintVersion": "2.0.0",
+            "tags": ["unit"],
+            "timeline": []
+        }"#;
+        create_test_file_with_content(temp_dir.path(), "future_tagged.json", content);
+
+        let index_name = "index.json";
+        unsafe { env::set_var("INDEX_NAME", "./".to_owned() + index_name) };
+        let _d = DirGuard::change_to(temp_dir.path());
+
+        let loader = TestLoader::new(Path::new("."), true).unwrap();
+        let results = loader.load_specs_by_tags(&["unit".to_string()]).unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            matches!(results[0], TestSpecLoadResult::Skipped { .. }),
+            "expected Skipped for flintVersion 2.0.0"
         );
     }
 
