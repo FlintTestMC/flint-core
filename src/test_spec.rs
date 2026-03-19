@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
+use semver::{Version, VersionReq};
 
 /// Lightweight header parsed before full deserialization.
 /// Used for version gating and test indexing.
@@ -11,7 +12,7 @@ use std::path::PathBuf;
 #[serde(rename_all = "camelCase")]
 pub struct MinimalTestSpec {
     #[serde(default)]
-    pub flint_version: Option<String>,
+    pub flint_version: String,
     pub name: String,
     pub description: Option<String>,
     #[serde(default)]
@@ -497,19 +498,18 @@ impl TestSpec {
     /// Pass `impl_version = None` to skip version checking (treat as "supports all").
     pub fn try_load(
         json: &str,
-        impl_version: Option<&str>,
+        req: VersionReq
     ) -> Result<TestSpecLoadResult, serde_json::Error> {
         use serde::Deserialize;
         let value: serde_json::Value = serde_json::from_str(json)?;
         let minimal = MinimalTestSpec::deserialize(&value)?;
-        if let Some(impl_ver) = impl_version
-            && let Some(test_ver) = &minimal.flint_version
-            && parse_version(test_ver) > parse_version(impl_ver)
+        let ver = Version::parse(&minimal.flint_version).unwrap_or(Version::new(0, 0, 0));
+        if !req.matches(&ver)
         {
             return Ok(TestSpecLoadResult::Skipped {
                 reason: format!(
                     "requires flint_version {}, implementation supports {}",
-                    test_ver, impl_ver
+                    ver.to_string(), ver.to_string()
                 ),
                 spec: minimal,
             });
