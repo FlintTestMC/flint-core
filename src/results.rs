@@ -129,6 +129,12 @@ pub struct TestResult {
     /// Overall success status (true if all assertions passed)
     pub success: bool,
 
+    /// Whether the test was skipped (e.g. due to version mismatch)
+    pub skipped: bool,
+
+    /// Reason for skipping, if applicable
+    pub skip_reason: Option<String>,
+
     /// Individual assertion results
     pub assertions: Vec<AssertionResult>,
 
@@ -151,6 +157,24 @@ impl TestResult {
         Self {
             test_name: test_name.into(),
             success: true,
+            skipped: false,
+            skip_reason: None,
+            assertions: Vec::new(),
+            total_ticks: 0,
+            execution_time_ms: 0,
+            failure_reason: None,
+            test_offset: None,
+            minecraft_ids: Vec::new(),
+        }
+    }
+
+    /// Create a skipped test result
+    pub fn skipped(test_name: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            test_name: test_name.into(),
+            success: true,
+            skipped: true,
+            skip_reason: Some(reason.into()),
             assertions: Vec::new(),
             total_ticks: 0,
             execution_time_ms: 0,
@@ -224,11 +248,14 @@ pub struct TestSummary {
     /// Total number of tests
     pub total_tests: usize,
 
-    /// Number of tests that passed
+    /// Number of tests that passed (excludes skipped)
     pub passed_tests: usize,
 
     /// Number of tests that failed
     pub failed_tests: usize,
+
+    /// Number of tests that were skipped
+    pub skipped_tests: usize,
 
     /// Total execution time for all tests in milliseconds
     pub total_execution_time_ms: u64,
@@ -238,8 +265,9 @@ impl TestSummary {
     /// Create a test summary from a collection of test results
     pub fn from_results(results: Vec<TestResult>) -> Self {
         let total_tests = results.len();
-        let passed_tests = results.iter().filter(|r| r.success).count();
-        let failed_tests = total_tests - passed_tests;
+        let skipped_tests = results.iter().filter(|r| r.skipped).count();
+        let failed_tests = results.iter().filter(|r| !r.success && !r.skipped).count();
+        let passed_tests = total_tests - skipped_tests - failed_tests;
         let total_execution_time_ms = results.iter().map(|r| r.execution_time_ms).sum();
 
         Self {
@@ -247,31 +275,39 @@ impl TestSummary {
             total_tests,
             passed_tests,
             failed_tests,
+            skipped_tests,
             total_execution_time_ms,
         }
     }
 
     /// Get all failed tests
     pub fn failed_tests(&self) -> Vec<&TestResult> {
-        self.results.iter().filter(|r| !r.success).collect()
+        self.results
+            .iter()
+            .filter(|r| !r.success && !r.skipped)
+            .collect()
     }
 
     /// Get all passed tests
     pub fn passed_tests(&self) -> Vec<&TestResult> {
-        self.results.iter().filter(|r| r.success).collect()
+        self.results
+            .iter()
+            .filter(|r| r.success && !r.skipped)
+            .collect()
     }
 
-    /// Check if all tests passed
+    /// Check if all tests passed (skipped tests do not count as failures)
     pub fn all_passed(&self) -> bool {
         self.failed_tests == 0
     }
 
-    /// Get success rate as a percentage
+    /// Get success rate as a percentage (skipped tests excluded from denominator)
     pub fn success_rate(&self) -> f64 {
-        if self.total_tests == 0 {
+        let effective = self.total_tests - self.skipped_tests;
+        if effective == 0 {
             0.0
         } else {
-            (self.passed_tests as f64 / self.total_tests as f64) * 100.0
+            (self.passed_tests as f64 / effective as f64) * 100.0
         }
     }
 

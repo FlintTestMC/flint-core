@@ -8,7 +8,7 @@ use crate::results::{
 use crate::test_spec::{ActionType, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{FlintAdapter, FlintPlayer, FlintWorld};
-use crate::{Block, TestSpec};
+use crate::{Block, TestSpec, TestSpecLoadResult};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -107,8 +107,16 @@ impl<A: FlintAdapter> TestRunner<A> {
     }
 
     /// Run multiple tests. Uses parallel execution when `config.parallel` is true.
-    pub fn run_tests(&self, specs: &[TestSpec]) -> TestSummary {
-        let results: Vec<TestResult> = specs.iter().map(|spec| self.run_test(spec)).collect();
+    pub fn run_tests(&self, specs: &[TestSpecLoadResult]) -> TestSummary {
+        let results: Vec<TestResult> = specs
+            .iter()
+            .map(|load_result| match load_result {
+                TestSpecLoadResult::Loaded(spec) => self.run_test(spec),
+                TestSpecLoadResult::Skipped { spec, reason } => {
+                    TestResult::skipped(&spec.name, reason)
+                }
+            })
+            .collect();
         TestSummary::from_results(results)
     }
 

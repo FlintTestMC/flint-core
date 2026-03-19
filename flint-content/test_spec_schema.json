@@ -12,7 +12,7 @@
     },
     "flintVersion": {
       "type": "string",
-      "description": "Version of the Flint test specification format"
+      "description": "Minimum Flint implementation version required to run this test. Tests are skipped if the implementation's supported version is lower."
     },
     "name": {
       "type": "string",

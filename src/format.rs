@@ -35,8 +35,9 @@ fn info_type_to_string(info: &InfoType) -> String {
 /// Print results as JSON to stdout
 pub fn print_json(results: &[TestResult], elapsed: Duration) {
     let total = results.len();
-    let passed = results.iter().filter(|r| r.success).count();
-    let failed = total - passed;
+    let skipped = results.iter().filter(|r| r.skipped).count();
+    let failed = results.iter().filter(|r| !r.success && !r.skipped).count();
+    let passed = total - skipped - failed;
 
     let failures = extract_failures(results);
     let failure_objects: Vec<serde_json::Value> = failures
@@ -55,12 +56,17 @@ pub fn print_json(results: &[TestResult], elapsed: Duration) {
     let test_objects: Vec<serde_json::Value> = results
         .iter()
         .map(|r| {
-            serde_json::json!({
+            let mut obj = serde_json::json!({
                 "name": r.test_name,
                 "success": r.success,
+                "skipped": r.skipped,
                 "total_ticks": r.total_ticks,
                 "execution_time_ms": r.execution_time_ms,
-            })
+            });
+            if let Some(reason) = &r.skip_reason {
+                obj["skip_reason"] = serde_json::Value::String(reason.clone());
+            }
+            obj
         })
         .collect();
 
@@ -69,6 +75,7 @@ pub fn print_json(results: &[TestResult], elapsed: Duration) {
             "total": total,
             "passed": passed,
             "failed": failed,
+            "skipped": skipped,
             "duration_secs": elapsed.as_secs_f64(),
         },
         "tests": test_objects,
@@ -92,7 +99,10 @@ pub fn print_tap(results: &[TestResult]) {
 
     for (i, result) in results.iter().enumerate() {
         let number = i + 1;
-        if result.success {
+        if result.skipped {
+            let reason = result.skip_reason.as_deref().unwrap_or("skipped");
+            println!("ok {} - {} # SKIP {}", number, result.test_name, reason);
+        } else if result.success {
             println!("ok {} - {}", number, result.test_name);
         } else {
             println!("not ok {} - {}", number, result.test_name);
@@ -117,7 +127,8 @@ pub fn print_tap(results: &[TestResult]) {
 /// Print results in JUnit XML format
 pub fn print_junit(results: &[TestResult], elapsed: Duration) {
     let total = results.len();
-    let failed = results.iter().filter(|r| !r.success).count();
+    let failed = results.iter().filter(|r| !r.success && !r.skipped).count();
+    let skipped = results.iter().filter(|r| r.skipped).count();
 
     let failures = extract_failures(results);
     let failure_map: std::collections::HashMap<&str, &AssertFailure> = failures
@@ -127,15 +138,17 @@ pub fn print_junit(results: &[TestResult], elapsed: Duration) {
 
     println!(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
     println!(
-        r#"<testsuites tests="{}" failures="{}" time="{:.3}">"#,
+        r#"<testsuites tests="{}" failures="{}" skipped="{}" time="{:.3}">"#,
         total,
         failed,
+        skipped,
         elapsed.as_secs_f64()
     );
     println!(
-        r#"  <testsuite name="flintmc" tests="{}" failures="{}" time="{:.3}">"#,
+        r#"  <testsuite name="flintmc" tests="{}" failures="{}" skipped="{}" time="{:.3}">"#,
         total,
         failed,
+        skipped,
         elapsed.as_secs_f64()
     );
 
@@ -148,7 +161,20 @@ pub fn print_junit(results: &[TestResult], elapsed: Duration) {
 
         let time = result.execution_time_ms as f64 / 1000.0;
 
-        if result.success {
+        if result.skipped {
+            println!(
+                r#"    <testcase classname="{}" name="{}" time="{:.3}">"#,
+                xml_escape(classname),
+                xml_escape(name),
+                time
+            );
+            if let Some(reason) = &result.skip_reason {
+                println!(r#"      <skipped message="{}"/>"#, xml_escape(reason));
+            } else {
+                println!(r#"      <skipped/>"#);
+            }
+            println!("    </testcase>");
+        } else if result.success {
             println!(
                 r#"    <testcase classname="{}" name="{}" time="{:.3}" />"#,
                 xml_escape(classname),
@@ -202,11 +228,14 @@ pub fn print_test_summary(results: &[TestResult], separator_width: usize) {
     println!("{}", "Test Summary".cyan().bold());
     print_separator(separator_width);
 
-    let total_passed = results.iter().filter(|r| r.success).count();
-    let total_failed = results.len() - total_passed;
+    let total_skipped = results.iter().filter(|r| r.skipped).count();
+    let total_failed = results.iter().filter(|r| !r.success && !r.skipped).count();
+    let total_passed = results.len() - total_skipped - total_failed;
 
     for result in results {
-        let status = if result.success {
+        let status = if result.skipped {
+            "SKIP".yellow().bold()
+        } else if result.success {
             "PASS".green().bold()
         } else {
             "FAIL".red().bold()
@@ -214,28 +243,45 @@ pub fn print_test_summary(results: &[TestResult], separator_width: usize) {
         println!("  [{}] {}", status, result.test_name);
     }
 
-    println!(
-        "\n{} tests run: {} passed, {} failed\n",
-        results.len(),
-        total_passed.to_string().green(),
-        total_failed.to_string().red()
-    );
+    if total_skipped > 0 {
+        println!(
+            "\n{} tests run: {} passed, {} failed, {} skipped\n",
+            results.len(),
+            total_passed.to_string().green(),
+            total_failed.to_string().red(),
+            total_skipped.to_string().yellow()
+        );
+    } else {
+        println!(
+            "\n{} tests run: {} passed, {} failed\n",
+            results.len(),
+            total_passed.to_string().green(),
+            total_failed.to_string().red()
+        );
+    }
 }
 
 /// Format concise summary as a plain string (no ANSI colors)
 pub fn format_concise_summary(results: &[TestResult], elapsed: Duration) -> String {
     let total = results.len();
-    let total_passed = results.iter().filter(|r| r.success).count();
-    let total_failed = total - total_passed;
+    let total_skipped = results.iter().filter(|r| r.skipped).count();
+    let total_failed = results.iter().filter(|r| !r.success && !r.skipped).count();
+    let total_passed = total - total_skipped - total_failed;
     let secs = elapsed.as_secs_f64();
 
     let mut out = String::new();
     out.push('\n');
     if total_failed == 0 {
+        let skip_note = if total_skipped > 0 {
+            format!(", {} skipped", format_number(total_skipped))
+        } else {
+            String::new()
+        };
         out.push_str(&format!(
-            "✓ All {} tests passed ({:.3}s)\n",
+            "✓ All {} tests passed ({:.3}s){}\n",
             format_number(total),
-            secs
+            secs,
+            skip_note
         ));
     } else {
         out.push_str(&format!(
@@ -248,11 +294,20 @@ pub fn format_concise_summary(results: &[TestResult], elapsed: Duration) -> Stri
         let failures = extract_failures(results);
         format_failure_tree(&failures, &mut out);
         out.push('\n');
-        out.push_str(&format!(
-            "{} passed, {} failed\n",
-            format_number(total_passed),
-            format_number(total_failed)
-        ));
+        if total_skipped > 0 {
+            out.push_str(&format!(
+                "{} passed, {} failed, {} skipped\n",
+                format_number(total_passed),
+                format_number(total_failed),
+                format_number(total_skipped)
+            ));
+        } else {
+            out.push_str(&format!(
+                "{} passed, {} failed\n",
+                format_number(total_passed),
+                format_number(total_failed)
+            ));
+        }
     }
     out.push('\n');
     out
@@ -261,18 +316,29 @@ pub fn format_concise_summary(results: &[TestResult], elapsed: Duration) -> Stri
 /// Print concise summary (default mode, with colors)
 pub fn print_concise_summary(results: &[TestResult], elapsed: Duration) {
     let total = results.len();
-    let total_passed = results.iter().filter(|r| r.success).count();
-    let total_failed = total - total_passed;
+    let total_skipped = results.iter().filter(|r| r.skipped).count();
+    let total_failed = results.iter().filter(|r| !r.success && !r.skipped).count();
+    let total_passed = total - total_skipped - total_failed;
     let secs = elapsed.as_secs_f64();
 
     println!();
     if total_failed == 0 {
-        println!(
-            "{} All {} tests passed ({:.3}s)",
-            "✓".green().bold(),
-            format_number(total),
-            secs
-        );
+        if total_skipped > 0 {
+            println!(
+                "{} All {} tests passed ({:.3}s), {} skipped",
+                "✓".green().bold(),
+                format_number(total),
+                secs,
+                format_number(total_skipped).yellow()
+            );
+        } else {
+            println!(
+                "{} All {} tests passed ({:.3}s)",
+                "✓".green().bold(),
+                format_number(total),
+                secs
+            );
+        }
     } else {
         println!(
             "{} of {} tests failed ({:.3}s)",
@@ -284,11 +350,20 @@ pub fn print_concise_summary(results: &[TestResult], elapsed: Duration) {
         let failures = extract_failures(results);
         print_failure_tree(&failures);
         println!();
-        println!(
-            "{} passed, {} failed",
-            format_number(total_passed).green(),
-            format_number(total_failed).red()
-        );
+        if total_skipped > 0 {
+            println!(
+                "{} passed, {} failed, {} skipped",
+                format_number(total_passed).green(),
+                format_number(total_failed).red(),
+                format_number(total_skipped).yellow()
+            );
+        } else {
+            println!(
+                "{} passed, {} failed",
+                format_number(total_passed).green(),
+                format_number(total_failed).red()
+            );
+        }
     }
     println!();
 }
