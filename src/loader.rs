@@ -125,7 +125,11 @@ impl TestLoader {
 
     /// Load and version-check test specs from a list of paths.
     /// Uses the crate's PROTOCOL_VERSION to filter incompatible tests.
-    pub fn load_specs(&self, paths: &[PathBuf], validate_cleanup: bool) -> Result<Vec<TestSpecLoadResult>> {
+    pub fn load_specs(
+        &self,
+        paths: &[PathBuf],
+        validate_cleanup: bool,
+    ) -> Result<Vec<TestSpecLoadResult>> {
         let mut results = Vec::new();
         for path in paths {
             let json = std::fs::read_to_string(path)?;
@@ -145,7 +149,11 @@ impl TestLoader {
 
     /// Collect test files by tags and load them with version checking.
     /// Convenience wrapper around `collect_by_tags` + `load_specs`.
-    pub fn load_specs_by_tags(&self, tags: &[String], validate_cleanup: bool) -> Result<Vec<TestSpecLoadResult>> {
+    pub fn load_specs_by_tags(
+        &self,
+        tags: &[String],
+        validate_cleanup: bool,
+    ) -> Result<Vec<TestSpecLoadResult>> {
         let paths = self.collect_by_tags(tags)?;
         self.load_specs(&paths, validate_cleanup)
     }
@@ -834,7 +842,8 @@ mod tests {
             let mut out = Vec::new();
             for p in &paths {
                 let json = fs::read_to_string(p).unwrap();
-                let r = TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap(), false).unwrap();
+                let r =
+                    TestSpec::try_load(&json, VersionReq::parse("1.0.0").unwrap(), false).unwrap();
                 out.push(r);
             }
             out
@@ -890,7 +899,8 @@ mod tests {
         let _d = DirGuard::change_to(temp_dir.path());
 
         let json = fs::read_to_string(&path).unwrap();
-        let result = TestSpec::try_load(&json, VersionReq::parse("<=1.0.0").unwrap(), false).unwrap();
+        let result =
+            TestSpec::try_load(&json, VersionReq::parse("<=1.0.0").unwrap(), false).unwrap();
 
         assert!(
             matches!(result, TestSpecLoadResult::Loaded(_)),
@@ -943,7 +953,9 @@ mod tests {
         let _d = DirGuard::change_to(temp_dir.path());
 
         let loader = TestLoader::new(Path::new("."), true).unwrap();
-        let results = loader.load_specs_by_tags(&["unit".to_string()], false).unwrap();
+        let results = loader
+            .load_specs_by_tags(&["unit".to_string()], false)
+            .unwrap();
 
         assert_eq!(results.len(), 1);
         assert!(
