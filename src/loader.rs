@@ -865,6 +865,7 @@ mod tests {
             "description": "matches current version",
             "flintVersion": "1.0.0",
             "tags": ["unit"],
+            "setup": { "cleanup": { "region": [[0,0,0],[1,1,1]] } },
             "timeline": []
         }"#;
         let path = create_test_file_with_content(temp_dir.path(), "current.json", content);
@@ -890,6 +891,7 @@ mod tests {
             "name": "no-version-test",
             "description": "no flintVersion field",
             "tags": ["unit"],
+            "setup": { "cleanup": { "region": [[0,0,0],[1,1,1]] } },
             "timeline": []
         }"#;
         let path = create_test_file_with_content(temp_dir.path(), "nover.json", content);
