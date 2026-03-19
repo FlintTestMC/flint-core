@@ -423,8 +423,7 @@ impl TestSpec {
             return Ok(TestSpecLoadResult::Skipped {
                 reason: format!(
                     "requires flint_version {}, implementation supports {}",
-                    ver,
-                    ver
+                    ver, ver
                 ),
                 spec: minimal,
             });
