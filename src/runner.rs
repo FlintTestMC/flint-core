@@ -224,7 +224,7 @@ impl<A: FlintAdapter> TestRunner<A> {
                         }
                         #[allow(unused)]
                         _ => {
-                            log::error!("Unsupported assertion type: {:?}", check);
+                            println!("Unsupported assertion type: {:?}", check);
                         }
                     }
                 }
