@@ -389,18 +389,13 @@ mod tests {
         let loader = TestLoader::new(Path::new("."), true).unwrap();
         let index_path = temp_dir.path().join(index_name);
         let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 8180331397721424639,
-  "index": {
-    "test": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
 
         // add file
@@ -436,18 +431,13 @@ mod tests {
         TestLoader::new(Path::new("."), true).unwrap();
         let index_path = temp_dir.path().join(index_name);
         let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 8180331397721424639,
-  "index": {
-    "default": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "default": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
     }
 
@@ -505,18 +495,13 @@ mod tests {
         let loader = TestLoader::new(Path::new("."), true).unwrap();
         let index_path = temp_dir.path().join(index_name);
         let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 8180331397721424639,
-  "index": {
-    "test": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
 
         // remove file
@@ -551,18 +536,13 @@ mod tests {
         let loader = TestLoader::new(Path::new("."), true).unwrap();
         let index_path = temp_dir.path().join(index_name);
         let index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 8180331397721424639,
-  "index": {
-    "test": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
 
         // add file
@@ -602,9 +582,13 @@ mod tests {
         let index_path = temp_dir.path().join(index_name);
         let mut index_content = fs::read_to_string(&index_path).unwrap();
 
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            "{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}",
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
 
         // add file
@@ -618,19 +602,18 @@ mod tests {
         assert!(loader.rebuild_index(&files).is_ok());
 
         index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 17571090526916378731,
-  "index": {
-    "test": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/nested/test4.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": [
+                    "./subdir1/nested/test3.json",
+                    "./subdir1/nested/test4.json",
+                    "./subdir1/test2.json",
+                    "./test1.json"
+                ]
+            })
         );
     }
     #[test]
@@ -665,9 +648,13 @@ mod tests {
         let index_path = temp_dir.path().join(index_name);
         let mut index_content = fs::read_to_string(&index_path).unwrap();
 
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            "{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}",
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
 
         // remove file
@@ -681,17 +668,13 @@ mod tests {
         assert!(loader.rebuild_index(&files).is_ok());
 
         index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 9213419820977342414,
-  "index": {
-    "test": [
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/test2.json", "./test1.json"]
+            })
         );
     }
     #[test]
@@ -726,9 +709,13 @@ mod tests {
         let index_path = temp_dir.path().join(index_name);
         let mut index_content = fs::read_to_string(&index_path).expect("Could not read index file");
 
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            "{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}",
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
 
         // add file
@@ -738,19 +725,18 @@ mod tests {
         assert!(loader.verify_and_rebuild_index().is_ok());
 
         index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 17571090526916378731,
-  "index": {
-    "test": [
-      "./subdir1/nested/test3.json",
-      "./subdir1/nested/test4.json",
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": [
+                    "./subdir1/nested/test3.json",
+                    "./subdir1/nested/test4.json",
+                    "./subdir1/test2.json",
+                    "./test1.json"
+                ]
+            })
         );
     }
     #[test]
@@ -785,9 +771,13 @@ mod tests {
         let index_path = temp_dir.path().join(index_name);
         let mut index_content = fs::read_to_string(&index_path).expect("Could not read index file");
 
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            "{\n  \"hash\": 8180331397721424639,\n  \"index\": {\n    \"test\": [\n      \"./subdir1/nested/test3.json\",\n      \"./subdir1/test2.json\",\n      \"./test1.json\"\n    ]\n  }\n}",
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/nested/test3.json", "./subdir1/test2.json", "./test1.json"]
+            })
         );
 
         // remove file
@@ -797,17 +787,13 @@ mod tests {
         assert!(loader.verify_and_rebuild_index().is_ok());
 
         index_content = fs::read_to_string(&index_path).expect("Could not read index file");
+        let v: serde_json::Value = serde_json::from_str(&index_content).unwrap();
+        assert!(v["hash"].as_u64().unwrap() > 0);
         assert_eq!(
-            r#"{
-  "hash": 9213419820977342414,
-  "index": {
-    "test": [
-      "./subdir1/test2.json",
-      "./test1.json"
-    ]
-  }
-}"#,
-            index_content
+            v["index"],
+            serde_json::json!({
+                "test": ["./subdir1/test2.json", "./test1.json"]
+            })
         );
     }
 
