@@ -1,4 +1,4 @@
-use crate::results::{AssertFailure, AssertionResult, InfoType, TestResult};
+use crate::results::{AssertFailure, AssertionResult, TestResult};
 use colored::Colorize;
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -19,19 +19,6 @@ fn extract_failures(results: &[TestResult]) -> Vec<(String, AssertFailure)> {
         .collect()
 }
 
-/// Convert InfoType to a display string
-fn info_type_to_string(info: &InfoType) -> String {
-    match info {
-        InfoType::String(s) => s.clone(),
-        InfoType::Block(b) => format!("{:?}", b),
-        InfoType::Blocks(blocks) => blocks
-            .iter()
-            .map(|b| format!("{:?}", b))
-            .collect::<Vec<_>>()
-            .join(" or "),
-    }
-}
-
 /// Print results as JSON to stdout
 pub fn print_json(results: &[TestResult], elapsed: Duration) {
     let total = results.len();
@@ -46,8 +33,8 @@ pub fn print_json(results: &[TestResult], elapsed: Duration) {
             serde_json::json!({
                 "test": name,
                 "tick": detail.tick,
-                "expected": info_type_to_string(&detail.expected),
-                "actual": info_type_to_string(&detail.actual),
+                "expected": String::from(&detail.expected),
+                "actual": String::from(&detail.actual),
                 "position": detail.position,
             })
         })
@@ -110,13 +97,10 @@ pub fn print_tap(results: &[TestResult]) {
                 println!("  ---");
                 println!(
                     "  message: \"expected {}, got {}\"",
-                    info_type_to_string(&detail.expected),
-                    info_type_to_string(&detail.actual)
+                    String::from(&detail.expected),
+                    String::from(&detail.actual)
                 );
-                println!(
-                    "  at: [{}, {}, {}]",
-                    detail.position[0], detail.position[1], detail.position[2]
-                );
+                println!("  at: {}", detail.position);
                 println!("  tick: {}", detail.tick);
                 println!("  ...");
             }
@@ -190,12 +174,10 @@ pub fn print_junit(results: &[TestResult], elapsed: Duration) {
             );
             if let Some(detail) = failure_map.get(result.test_name.as_str()) {
                 println!(
-                    r#"      <failure message="expected {}, got {} at ({},{},{}) tick {}"/>"#,
-                    xml_escape(&info_type_to_string(&detail.expected)),
-                    xml_escape(&info_type_to_string(&detail.actual)),
-                    detail.position[0],
-                    detail.position[1],
-                    detail.position[2],
+                    r#"      <failure message="expected {}, got {} at {} tick {}"/>"#,
+                    xml_escape(&String::from(&detail.expected)),
+                    xml_escape(&String::from(&detail.actual)),
+                    detail.position,
                     detail.tick
                 );
             } else {
@@ -455,15 +437,13 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, ou
             out.push_str(&format!("{}{}{}\n", prefix, connector, name));
             let detail_connector = if is_last { "    " } else { "│   " };
             out.push_str(&format!(
-                "{}{}└─ t{}: expected {}, got {} @ ({},{},{})\n",
+                "{}{}└─ t{}: expected {}, got {} @ {}\n",
                 prefix,
                 detail_connector,
                 detail.tick,
-                info_type_to_string(&detail.expected),
-                info_type_to_string(&detail.actual),
-                detail.position[0],
-                detail.position[1],
-                detail.position[2]
+                String::from(&detail.expected),
+                String::from(&detail.actual),
+                detail.position
             ));
         } else {
             out.push_str(&format!("{}{}{}\n", prefix, connector, name));
@@ -508,15 +488,13 @@ fn render_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool) {
             println!("{}{}{}", prefix, connector, name);
             let detail_connector = if is_last { "    " } else { "│   " };
             println!(
-                "{}{}└─ t{}: expected {}, got {} @ ({},{},{})",
+                "{}{}└─ t{}: expected {}, got {} @ {}",
                 prefix,
                 detail_connector,
                 detail.tick,
-                info_type_to_string(&detail.expected).green(),
-                info_type_to_string(&detail.actual).red(),
-                detail.position[0],
-                detail.position[1],
-                detail.position[2]
+                String::from(&detail.expected).green(),
+                String::from(&detail.actual).red(),
+                detail.position
             );
         } else {
             println!("{}{}{}", prefix, connector, name);

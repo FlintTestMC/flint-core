@@ -3,9 +3,10 @@
 //! The `TestRunner` loads tests and executes them against a server adapter.
 
 use crate::results::{
-    ActionOutcome, AssertFailure, AssertionResult, InfoType, TestResult, TestSummary,
+    ActionOutcome, AssertFailure, AssertPosition, AssertionResult, InfoType, TestResult,
+    TestSummary,
 };
-use crate::test_spec::{ActionType, Item, PlayerSlot};
+use crate::test_spec::{ActionType, AssertType, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
@@ -175,32 +176,56 @@ impl<A: FlintAdapter> TestRunner<A> {
 
             ActionType::Assert { checks } => {
                 for check in checks {
-                    let pos = [check.pos[0], check.pos[1], check.pos[2]];
-                    let actual = world.get_block(pos);
-                    let expected_blocks = check.is.to_vec();
+                    match check {
+                        AssertType::Block(block) => {
+                            let pos = [block.pos[0], block.pos[1], block.pos[2]];
+                            let actual = world.get_block(pos);
+                            let expected_blocks = block.is.to_vec();
 
-                    if !expected_blocks
-                        .iter()
-                        .any(|expected| block_matches(&actual, expected))
-                    {
-                        let expected_str = expected_blocks
-                            .iter()
-                            .map(|b| b.to_command())
-                            .collect::<Vec<_>>()
-                            .join(" or ");
-                        return ActionOutcome::AssertFailed(AssertFailure {
-                            tick: _tick,
-                            error_message: format!(
-                                "Block mismatch at {:?}: expected '{}', got '{}'",
-                                pos,
-                                expected_str,
-                                actual.to_command(),
-                            ),
-                            position: pos,
-                            execution_time_ms: None,
-                            expected: InfoType::Blocks(expected_blocks),
-                            actual: InfoType::Block(actual),
-                        });
+                            if !expected_blocks
+                                .iter()
+                                .any(|expected| block_matches(&actual, expected))
+                            {
+                                let expected_str = expected_blocks
+                                    .iter()
+                                    .map(|b| b.to_command())
+                                    .collect::<Vec<_>>()
+                                    .join(" or ");
+                                return ActionOutcome::AssertFailed(AssertFailure {
+                                    tick: _tick,
+                                    error_message: format!(
+                                        "Block mismatch at {:?}: expected '{}', got '{}'",
+                                        pos,
+                                        expected_str,
+                                        actual.to_command(),
+                                    ),
+                                    position: AssertPosition::from_array(pos),
+                                    execution_time_ms: None,
+                                    expected: InfoType::Blocks(expected_blocks),
+                                    actual: InfoType::Block(actual),
+                                });
+                            }
+                        }
+                        AssertType::Inventory(inv) => {
+                            let p = player.get_or_insert_with(|| world.create_player());
+                            let data: Vec<String>;
+                            if let Some(item) = inv.is.clone() {
+                                data = item.data.keys().cloned().collect();
+                            } else {
+                                data = vec![]
+                            }
+                            let actual = p.get_slot(inv.slot, data).unwrap_or(Item::empty());
+                            let expected = inv.is.clone().unwrap_or(Item::empty());
+                            if !item_matches(&actual, &expected) {
+                                return ActionOutcome::AssertFailed(AssertFailure::new_item(
+                                    _tick, &expected, &actual, inv.slot,
+                                ));
+                            }
+                        }
+                        #[allow(unused)]
+                        _ => {
+                            println!("Unsupported assertion type: {:?}", check);
+                        }
                     }
                 }
                 ActionOutcome::AssertPassed
@@ -244,25 +269,30 @@ impl<A: FlintAdapter> TestRunner<A> {
     }
 }
 
-/// Check if actual block matches expected.
-fn block_matches(actual: &Block, expected: &Block) -> bool {
-    // Check block ID
-    if actual.id != expected.id {
+fn check_id(actual: &str, expected: &str) -> bool {
+    if actual != expected {
         // Also try without minecraft: prefix
-        let expected_id = if expected.id.starts_with("minecraft:") {
-            &expected.id[10..]
+        let expected_id = if let Some(stripped) = expected.strip_prefix("minecraft:") {
+            stripped
         } else {
-            &expected.id
+            expected
         };
-        let actual_id = if actual.id.starts_with("minecraft:") {
-            &actual.id[10..]
+        let actual_id = if let Some(stripped) = expected.strip_prefix("minecraft:") {
+            stripped
         } else {
-            &actual.id
+            actual
         };
         if actual_id != expected_id {
             return false;
         }
     }
+    true
+}
+
+/// Check if actual block matches expected.
+fn block_matches(actual: &Block, expected: &Block) -> bool {
+    // Check block ID
+    check_id(&actual.id, &expected.id);
 
     // Check properties if specified in expected
     for (key, expected_value) in &expected.properties {
@@ -276,5 +306,24 @@ fn block_matches(actual: &Block, expected: &Block) -> bool {
         }
     }
 
+    true
+}
+
+fn item_matches(actual: &Item, expected: &Item) -> bool {
+    // Check item ID
+    check_id(&actual.id, &expected.id);
+    if actual.count != expected.count {
+        return false;
+    }
+    for (key, expected_value) in &expected.data {
+        if let Some(actual_value) = actual.data.get(key) {
+            if actual_value != expected_value {
+                return false;
+            }
+        } else {
+            // Property expected but not found in actual item - this is a mismatch
+            return false;
+        }
+    }
     true
 }

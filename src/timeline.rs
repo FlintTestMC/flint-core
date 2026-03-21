@@ -102,7 +102,7 @@ impl<'a> TimelineAggregate<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_spec::{ActionType, Block, BlockCheck, BlockSpec, TickSpec};
+    use crate::test_spec::{ActionType, AssertType, Block, BlockCheck, BlockSpec, TickSpec};
 
     fn create_test_spec(
         name: &str,
@@ -196,13 +196,13 @@ mod tests {
         let entry = TimelineEntry {
             at: TickSpec::Multiple(vec![0, 5, 10]),
             action_type: ActionType::Assert {
-                checks: vec![BlockCheck {
+                checks: vec![AssertType::Block(BlockCheck {
                     pos: [0, 0, 0],
                     is: BlockSpec::Single(Block {
                         id: "minecraft:redstone_wire".to_string(),
                         properties: Default::default(),
                     }),
-                }],
+                })],
             },
         };
 

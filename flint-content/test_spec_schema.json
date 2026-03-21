@@ -97,6 +97,11 @@
       },
       "additionalProperties": false
     },
+    "GameMode": {
+      "type": "string",
+      "enum": ["Survival", "Creative", "Adventure", "Spectator"],
+      "description": "Player game mode"
+    },
     "PlayerSlot": {
       "type": "string",
       "enum": [
@@ -141,6 +146,11 @@
           "maximum": 9,
           "default": 1,
           "description": "Initially selected hotbar slot (1-9)"
+        },
+        "game_mode": {
+          "$ref": "#/$defs/GameMode",
+          "default": "Creative",
+          "description": "The gametype of the player, defaults to creative"
         }
       },
       "additionalProperties": false
@@ -194,6 +204,43 @@
         "block": {
           "$ref": "#/$defs/Block",
           "description": "Block to place"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Item": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Item identifier, e.g., 'minecraft:honeycomb'"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64,
+          "default": 1,
+          "description": "Stack count"
+        }
+      },
+      "additionalProperties": { "type": "string" },
+      "description": "Item with optional data fields (flattened)"
+    },
+    "InventoryCheck": {
+      "type": "object",
+      "required": ["slot"],
+      "properties": {
+        "slot": {
+          "$ref": "#/$defs/PlayerSlot",
+          "description": "Inventory slot to check"
+        },
+        "is": {
+          "oneOf": [
+            { "$ref": "#/$defs/Item" },
+            { "type": "string", "enum": ["None", "empty"], "description": "Explicit empty slot marker" }
+          ],
+          "description": "Expected item in the slot, or 'None'/'empty' for an empty slot"
         }
       },
       "additionalProperties": false
@@ -328,8 +375,13 @@
               "do": true,
               "checks": {
                 "type": "array",
-                "items": { "$ref": "#/$defs/BlockCheck" },
-                "description": "List of block checks to perform"
+                "items": {
+                  "oneOf": [
+                    { "$ref": "#/$defs/BlockCheck" },
+                    { "$ref": "#/$defs/InventoryCheck" }
+                  ]
+                },
+                "description": "List of checks to perform"
               }
             },
             "required": ["checks"],
