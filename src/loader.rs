@@ -118,9 +118,8 @@ impl TestLoader {
     /// * `TEST_PATH` - Base directory for tests (default: "./test")
     /// * `INDEX_NAME` - Path to the index cache file (default: ".cache/index.json")
     /// * `DEFAULT_TAG` - Tag assigned to tests with no tags (default: "default")
-    pub fn collect_by_tags(&self, tags: &[String]) -> Result<Vec<PathBuf>> {
-        let paths = self.index.get_test_paths_from_scopes(tags)?;
-        Ok(paths)
+    pub fn collect_by_tags(&self, tags: &[String]) -> Vec<PathBuf> {
+        self.index.get_test_paths_from_scopes(tags)
     }
 
     /// Load and version-check test specs from a list of paths.
@@ -154,7 +153,7 @@ impl TestLoader {
         tags: &[String],
         validate_cleanup: bool,
     ) -> Result<Vec<TestSpecLoadResult>> {
-        let paths = self.collect_by_tags(tags)?;
+        let paths = self.collect_by_tags(tags);
         self.load_specs(&paths, validate_cleanup)
     }
 

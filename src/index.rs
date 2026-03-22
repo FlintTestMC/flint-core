@@ -180,12 +180,12 @@ impl Index {
     /// * `TEST_PATH` - Base directory for tests (default: "./test")
     /// * `INDEX_NAME` - Path to the index cache file (default: ".cache/index.json")
     /// * `DEFAULT_TAG` - Tag assigned to tests with no tags (default: "default")
-    pub fn get_test_paths_from_scopes(&self, scope: &[String]) -> anyhow::Result<Vec<PathBuf>> {
+    pub fn get_test_paths_from_scopes(&self, scope: &[String]) -> Vec<PathBuf> {
         let mut test_paths: Vec<PathBuf> = Vec::new();
         let mut seen: FxHashSet<&str> = FxHashSet::default();
         for tag in scope {
             match self.index.get(tag) {
-                None => return Err(anyhow::anyhow!("Tag '{}' not found in index", tag)),
+                None => {} //TODO: add here a better and nicer warning/info message. Because it shouldn't silent fail but also not like before through an error
                 Some(paths) => {
                     for path in paths {
                         if seen.insert(path.as_str()) {
@@ -195,7 +195,7 @@ impl Index {
                 }
             }
         }
-        Ok(test_paths)
+        test_paths
     }
 }
 
