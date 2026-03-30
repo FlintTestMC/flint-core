@@ -292,7 +292,9 @@ fn check_id(actual: &str, expected: &str) -> bool {
 /// Check if actual block matches expected.
 fn block_matches(actual: &Block, expected: &Block) -> bool {
     // Check block ID
-    check_id(&actual.id, &expected.id);
+    if !check_id(&actual.id, &expected.id) {
+        return false;
+    }
 
     // Check properties if specified in expected
     for (key, expected_value) in &expected.properties {
@@ -311,7 +313,9 @@ fn block_matches(actual: &Block, expected: &Block) -> bool {
 
 fn item_matches(actual: &Item, expected: &Item) -> bool {
     // Check item ID
-    check_id(&actual.id, &expected.id);
+    if !check_id(&actual.id, &expected.id) {
+        return false;
+    }
     if actual.count != expected.count {
         return false;
     }
