@@ -59,7 +59,6 @@ pub struct CleanupSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlayerSlot {
-    None,
     // Hotbar (9 slots)
     Hotbar1,
     Hotbar2,
