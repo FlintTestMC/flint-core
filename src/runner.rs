@@ -277,7 +277,7 @@ fn check_id(actual: &str, expected: &str) -> bool {
         } else {
             expected
         };
-        let actual_id = if let Some(stripped) = expected.strip_prefix("minecraft:") {
+        let actual_id = if let Some(stripped) = actual.strip_prefix("minecraft:") {
             stripped
         } else {
             actual
