@@ -3,7 +3,7 @@
 //! When `flint-steel` (or any other adapter) sees a failing test, it can build
 //! a [`FailurePayload`] from the spec + result and turn it into a URL pointing
 //! at a flint-viz instance. Clicking the URL opens the test with the failing
-//! tick auto-seeked and the expected/actual blocks overlaid in 3D.
+//! tick auto-sought and the expected/actual blocks overlaid in 3D.
 //!
 //! The encoded payload lives in the URL **fragment** (`#data=...`) so it never
 //! reaches the server in HTTP requests — flint-viz decodes it client-side
