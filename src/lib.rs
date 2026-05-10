@@ -8,6 +8,7 @@ pub mod test_spec;
 pub mod timeline;
 pub mod traits;
 pub mod utils;
+pub mod viz_link;
 
 use semver::VersionReq;
 // Re-export main types for convenience
