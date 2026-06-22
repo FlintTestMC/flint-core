@@ -87,12 +87,10 @@ impl<A: FlintAdapter> TestRunner<A> {
                         ActionOutcome::AssertPassed => {
                             result.add_assertion(AssertionResult::Success(tick));
                         }
-                        ActionOutcome::AssertFailed(fail) => {
-                            result.add_assertion(AssertionResult::Failure(fail));
-                            result.success = false;
-                            result.total_ticks = tick;
-                            result.execution_time_ms = start_time.elapsed().as_millis() as u64;
-                            return result;
+                        ActionOutcome::AssertFailed(failures) => {
+                            for fail in failures {
+                                result.add_assertion(AssertionResult::Failure(fail));
+                            }
                         }
                     }
                 }
@@ -175,6 +173,7 @@ impl<A: FlintAdapter> TestRunner<A> {
             }
 
             ActionType::Assert { checks } => {
+                let mut failures = Vec::new();
                 for check in checks {
                     match check {
                         AssertType::Block(block) => {
@@ -191,7 +190,7 @@ impl<A: FlintAdapter> TestRunner<A> {
                                     .map(|b| b.to_command())
                                     .collect::<Vec<_>>()
                                     .join(" or ");
-                                return ActionOutcome::AssertFailed(AssertFailure {
+                                failures.push(AssertFailure {
                                     tick: _tick,
                                     error_message: format!(
                                         "Block mismatch at {:?}: expected '{}', got '{}'",
@@ -217,7 +216,7 @@ impl<A: FlintAdapter> TestRunner<A> {
                             let actual = p.get_slot(inv.slot, data).unwrap_or(Item::empty());
                             let expected = inv.is.clone().unwrap_or(Item::empty());
                             if !item_matches(&actual, &expected) {
-                                return ActionOutcome::AssertFailed(AssertFailure::new_item(
+                                failures.push(AssertFailure::new_item(
                                     _tick, &expected, &actual, inv.slot,
                                 ));
                             }
@@ -228,7 +227,11 @@ impl<A: FlintAdapter> TestRunner<A> {
                         }
                     }
                 }
-                ActionOutcome::AssertPassed
+                if failures.is_empty() {
+                    ActionOutcome::AssertPassed
+                } else {
+                    ActionOutcome::AssertFailed(failures)
+                }
             }
 
             ActionType::UseItemOn { pos, face, item } => {
