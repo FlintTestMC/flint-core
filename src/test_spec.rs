@@ -627,6 +627,8 @@ impl TestSpec {
             }
         }
 
+        crate::timeline_validation::validate_timeline_order(self)?;
+
         Ok(())
     }
 
