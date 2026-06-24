@@ -57,11 +57,9 @@ impl<'a> TimelineAggregate<'a> {
 
         // Prioritize Assertions over other actions in each tick
         for entries in timeline.values_mut() {
-            entries.sort_by_key(|(_, entry, _)| {
-                match &entry.action_type {
-                    crate::test_spec::ActionType::Assert { .. } => 0,
-                    _ => 1,
-                }
+            entries.sort_by_key(|(_, entry, _)| match &entry.action_type {
+                crate::test_spec::ActionType::Assert { .. } => 0,
+                _ => 1,
             });
         }
 

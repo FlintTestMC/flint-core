@@ -108,7 +108,7 @@ pub fn calculate_test_offsets_for_batch(tests: &[TestSpec], padding: i32) -> Vec
     }
 
     let cols = (total_tests as f64).sqrt().ceil() as usize;
-    let rows = (total_tests + cols - 1) / cols;
+    let rows = total_tests.div_ceil(cols);
 
     let mut left_extent = vec![i32::MAX; cols];
     let mut right_extent = vec![i32::MIN; cols];
@@ -116,11 +116,11 @@ pub fn calculate_test_offsets_for_batch(tests: &[TestSpec], padding: i32) -> Vec
     let mut front_extent = vec![i32::MIN; rows];
 
     // First pass: collect extents for each column and row
-    for i in 0..total_tests {
+    for (i, test) in tests.iter().enumerate().take(total_tests) {
         let col = i % cols;
         let row = i / cols;
-        
-        let (x_min, x_max, z_min, z_max) = if let Some(setup) = &tests[i].setup
+
+        let (x_min, x_max, z_min, z_max) = if let Some(setup) = &test.setup
             && let Some(cleanup) = &setup.cleanup
         {
             let r = cleanup.region;
@@ -136,7 +136,7 @@ pub fn calculate_test_offsets_for_batch(tests: &[TestSpec], padding: i32) -> Vec
 
         left_extent[col] = left_extent[col].min(x_min);
         right_extent[col] = right_extent[col].max(x_max);
-        
+
         back_extent[row] = back_extent[row].min(z_min);
         front_extent[row] = front_extent[row].max(z_max);
     }
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_calculate_test_offsets_for_batch() {
-        use crate::test_spec::{TestSpec, SetupSpec, CleanupSpec};
+        use crate::test_spec::{CleanupSpec, SetupSpec, TestSpec};
 
         let test1 = TestSpec {
             flint_version: None,
