@@ -55,6 +55,16 @@ impl<'a> TimelineAggregate<'a> {
             }
         }
 
+        // Prioritize Assertions over other actions in each tick
+        for entries in timeline.values_mut() {
+            entries.sort_by_key(|(_, entry, _)| {
+                match &entry.action_type {
+                    crate::test_spec::ActionType::Assert { .. } => 0,
+                    _ => 1,
+                }
+            });
+        }
+
         TimelineAggregate {
             timeline,
             max_tick,
@@ -272,5 +282,49 @@ mod tests {
 
         // After all events, should return None
         assert_eq!(aggregate.next_event_tick(20), None);
+    }
+
+    #[test]
+    fn test_assertions_run_before_other_actions_on_same_tick() {
+        // Benchmark tests often schedule assert + place on the same tick. Asserts must
+        // observe the world before mutations (e.g. fence_row_connections, fence_in_wall).
+        // JSON order is not always assert-first; aggregation enforces assert-first execution.
+        let place = TimelineEntry {
+            at: TickSpec::Single(1),
+            action_type: ActionType::Place {
+                pos: [1, 0, 0],
+                block: Block {
+                    id: "minecraft:stone".to_string(),
+                    properties: Default::default(),
+                },
+            },
+        };
+        let assert_entry = TimelineEntry {
+            at: TickSpec::Single(1),
+            action_type: ActionType::Assert {
+                checks: vec![AssertType::Block(BlockCheck {
+                    pos: [0, 0, 0],
+                    is: BlockSpec::Single(Block {
+                        id: "minecraft:air".to_string(),
+                        properties: Default::default(),
+                    }),
+                })],
+            },
+        };
+
+        let test = create_test_spec("assert_first", vec![place, assert_entry], vec![]);
+        let tests = [(test, [0, 0, 0])];
+        let aggregate = TimelineAggregate::from_tests(&tests);
+
+        let actions: Vec<_> = aggregate.timeline[&1]
+            .iter()
+            .map(|(_, entry, _)| match &entry.action_type {
+                ActionType::Assert { .. } => "assert",
+                ActionType::Place { .. } => "place",
+                _ => "other",
+            })
+            .collect();
+
+        assert_eq!(actions, vec!["assert", "place"]);
     }
 }

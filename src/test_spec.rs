@@ -104,7 +104,7 @@ impl Display for PlayerSlot {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameMode {
     Survival,
     Creative,
@@ -123,7 +123,7 @@ pub struct PlayerConfig {
     #[serde(default = "default_selected_hotbar")]
     pub selected_hotbar: u8,
     /// The gametype of the player, defaults to "creative"
-    #[serde(default = "default_game_type")]
+    #[serde(default = "default_game_type", alias = "gamemode")]
     pub game_mode: GameMode,
 }
 

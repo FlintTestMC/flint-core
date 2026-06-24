@@ -1,3 +1,5 @@
+use crate::test_spec::TestSpec;
+
 /// Spatial utilities for test positioning and layout
 ///
 /// This module provides utilities for:
@@ -69,7 +71,7 @@ pub fn calculate_test_offset(test_index: usize, total_tests: usize, cell_size: i
 ///
 /// A 3D offset [x, y, z] for positioning the test in world coordinates
 pub fn calculate_test_offset_default(test_index: usize, total_tests: usize) -> [i32; 3] {
-    const DEFAULT_CELL_SIZE: i32 = 16;
+    const DEFAULT_CELL_SIZE: i32 = 32;
     calculate_test_offset(test_index, total_tests, DEFAULT_CELL_SIZE)
 }
 
@@ -95,6 +97,78 @@ pub fn calculate_all_offsets(total_tests: usize, cell_size: i32) -> Vec<[i32; 3]
     (0..total_tests)
         .map(|i| calculate_test_offset(i, total_tests, cell_size))
         .collect()
+}
+
+/// Calculate test offsets automatically based on their sizes.
+/// `padding` is the spacing between the test regions.
+pub fn calculate_test_offsets_for_batch(tests: &[TestSpec], padding: i32) -> Vec<[i32; 3]> {
+    let total_tests = tests.len();
+    if total_tests == 0 {
+        return Vec::new();
+    }
+
+    let cols = (total_tests as f64).sqrt().ceil() as usize;
+    let rows = (total_tests + cols - 1) / cols;
+
+    let mut left_extent = vec![i32::MAX; cols];
+    let mut right_extent = vec![i32::MIN; cols];
+    let mut back_extent = vec![i32::MAX; rows];
+    let mut front_extent = vec![i32::MIN; rows];
+
+    // First pass: collect extents for each column and row
+    for i in 0..total_tests {
+        let col = i % cols;
+        let row = i / cols;
+        
+        let (x_min, x_max, z_min, z_max) = if let Some(setup) = &tests[i].setup
+            && let Some(cleanup) = &setup.cleanup
+        {
+            let r = cleanup.region;
+            let x_min = r[0][0].min(r[1][0]);
+            let x_max = r[0][0].max(r[1][0]);
+            let z_min = r[0][2].min(r[1][2]);
+            let z_max = r[0][2].max(r[1][2]);
+            (x_min, x_max, z_min, z_max)
+        } else {
+            // Fallback: 32x32 cell centered at origin
+            (-16, 15, -16, 15)
+        };
+
+        left_extent[col] = left_extent[col].min(x_min);
+        right_extent[col] = right_extent[col].max(x_max);
+        
+        back_extent[row] = back_extent[row].min(z_min);
+        front_extent[row] = front_extent[row].max(z_max);
+    }
+
+    let mut x_offsets = vec![0; cols];
+    for c in 1..cols {
+        x_offsets[c] = x_offsets[c - 1] + right_extent[c - 1] - left_extent[c] + padding;
+    }
+
+    let mut z_offsets = vec![0; rows];
+    for r in 1..rows {
+        z_offsets[r] = z_offsets[r - 1] + front_extent[r - 1] - back_extent[r] + padding;
+    }
+
+    // Center the layout at the origin
+    let x_center = (left_extent[0] + x_offsets[cols - 1] + right_extent[cols - 1]) / 2;
+    let z_center = (back_extent[0] + z_offsets[rows - 1] + front_extent[rows - 1]) / 2;
+
+    let mut offsets = Vec::with_capacity(total_tests);
+    for i in 0..total_tests {
+        let col = i % cols;
+        let row = i / cols;
+        let ox = x_offsets[col] - x_center;
+        let oz = z_offsets[row] - z_center;
+        offsets.push([ox, 0, oz]);
+    }
+    offsets
+}
+
+/// Calculate test offsets automatically based on their sizes, with default spacing of 8 blocks.
+pub fn calculate_test_offsets_for_batch_default(tests: &[TestSpec]) -> Vec<[i32; 3]> {
+    calculate_test_offsets_for_batch(tests, 8)
 }
 
 /// Apply an offset to a position
@@ -236,7 +310,7 @@ mod tests {
     #[test]
     fn test_default_cell_size() {
         let offset1 = calculate_test_offset_default(0, 4);
-        let offset2 = calculate_test_offset(0, 4, 16);
+        let offset2 = calculate_test_offset(0, 4, 32);
         assert_eq!(offset1, offset2);
     }
 
@@ -254,5 +328,49 @@ mod tests {
 
         // Larger cell size produces larger spacing
         assert!(offset_large[0] > offset_small[0]);
+    }
+
+    #[test]
+    fn test_calculate_test_offsets_for_batch() {
+        use crate::test_spec::{TestSpec, SetupSpec, CleanupSpec};
+
+        let test1 = TestSpec {
+            flint_version: None,
+            name: "test1".to_string(),
+            description: None,
+            tags: vec![],
+            minecraft_ids: vec![],
+            dependencies: vec![],
+            setup: Some(SetupSpec {
+                cleanup: Some(CleanupSpec {
+                    region: [[-5, 0, -5], [5, 0, 5]], // 11x11
+                }),
+                player: None,
+            }),
+            timeline: vec![],
+            breakpoints: vec![],
+        };
+
+        let test2 = TestSpec {
+            flint_version: None,
+            name: "test2".to_string(),
+            description: None,
+            tags: vec![],
+            minecraft_ids: vec![],
+            dependencies: vec![],
+            setup: Some(SetupSpec {
+                cleanup: Some(CleanupSpec {
+                    region: [[-2, 0, -2], [2, 0, 2]], // 5x5
+                }),
+                player: None,
+            }),
+            timeline: vec![],
+            breakpoints: vec![],
+        };
+
+        let offsets = calculate_test_offsets_for_batch(&[test1, test2], 4);
+        assert_eq!(offsets.len(), 2);
+        assert_eq!(offsets[0][0], -4);
+        assert_eq!(offsets[1][0], 7);
     }
 }
