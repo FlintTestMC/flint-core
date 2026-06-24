@@ -75,6 +75,9 @@ impl<A: FlintAdapter> TestRunner<A> {
 
             // Set initial hotbar selection
             p.select_hotbar(player_config.selected_hotbar);
+
+            // Set game mode
+            p.set_game_mode(player_config.game_mode);
         }
 
         // Execute timeline tick by tick

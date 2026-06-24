@@ -6,6 +6,7 @@ pub mod runner;
 pub mod spatial;
 pub mod test_spec;
 pub mod timeline;
+pub mod timeline_validation;
 pub mod traits;
 pub mod utils;
 pub mod viz_link;

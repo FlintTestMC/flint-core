@@ -25,3 +25,7 @@ flate2 = "1"
 [dev-dependencies]
 tempfile = "3"
 serial_test = "3.5.0"
+
+[[bin]]
+name = "flint-validate"
+path = "src/bin/flint-validate.rs"
