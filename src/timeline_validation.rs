@@ -256,7 +256,8 @@ mod tests {
     #[test]
     fn rejects_test_name_mismatch() {
         let spec = spec_with_timeline("Wrong Name", vec![]);
-        let err = validate_test_name(&spec, Path::new("tests/fence_row_connections.json")).unwrap_err();
+        let err =
+            validate_test_name(&spec, Path::new("tests/fence_row_connections.json")).unwrap_err();
         assert!(err.to_string().contains("fence_row_connections"));
     }
 
