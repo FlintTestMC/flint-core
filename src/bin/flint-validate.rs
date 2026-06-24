@@ -52,7 +52,7 @@ fn run() -> Result<()> {
     }
 
     if failures > 0 {
-        bail!("{failures} test file(s) failed timeline validation");
+        bail!("{failures} test file(s) failed validation");
     }
 
     Ok(())
