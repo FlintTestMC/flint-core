@@ -5,6 +5,7 @@
 
 use crate::Block;
 use crate::test_spec::{GameMode, Item, PlayerSlot};
+use std::any::Any;
 
 /// Position in world coordinates [x, y, z]
 pub type BlockPos = [i32; 3];
@@ -84,11 +85,7 @@ pub trait FlintWorld: Send + Sync {
 /// - Select hotbar slots
 /// - Trigger item use actions
 pub trait FlintPlayer: Send + Sync {
-    /// Restore this simulated player's inventory into the backing server player.
-    ///
-    /// Implementations with one shared server player can use this as a context
-    /// switch when multiple tests execute in parallel.
-    fn restore_inventory(&mut self) {}
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// Set item in a slot (None = empty/clear the slot)
     fn set_slot(&mut self, slot: PlayerSlot, item: Option<&Item>);
