@@ -4,7 +4,7 @@
 //! to provide the actual block and player operations.
 
 use crate::Block;
-use crate::test_spec::{BlockFace, GameMode, Item, PlayerSlot};
+use crate::test_spec::{GameMode, Item, PlayerSlot};
 
 /// Position in world coordinates [x, y, z]
 pub type BlockPos = [i32; 3];
@@ -47,7 +47,7 @@ pub trait FlintWorld: Send + Sync {
 
     /// Create a simulated player in this world
     ///
-    /// Only called when tests use `use_item_on` or player-related actions.
+    /// Only called when tests use player-related actions.
     /// Pure block tests (place, fill, assert) don't need a player.
     fn create_player(&mut self) -> Box<dyn FlintPlayer>;
 }
@@ -59,6 +59,12 @@ pub trait FlintWorld: Send + Sync {
 /// - Select hotbar slots
 /// - Trigger item use actions
 pub trait FlintPlayer: Send + Sync {
+    /// Restore this simulated player's inventory into the backing server player.
+    ///
+    /// Implementations with one shared server player can use this as a context
+    /// switch when multiple tests execute in parallel.
+    fn restore_inventory(&mut self) {}
+
     /// Set item in a slot (None = empty/clear the slot)
     fn set_slot(&mut self, slot: PlayerSlot, item: Option<&Item>);
 
@@ -71,10 +77,11 @@ pub trait FlintPlayer: Send + Sync {
     /// Get currently selected hotbar slot (1-9)
     fn selected_hotbar(&self) -> u8;
 
-    /// Use the item in the active hotbar slot on a block face
-    ///
-    /// This tests the server's actual interaction logic.
-    fn use_item_on(&mut self, pos: BlockPos, face: &BlockFace);
+    /// Teleport the player to a world position and optionally set [yaw, pitch].
+    fn teleport(&mut self, pos: [f64; 3], rot: Option<[f32; 2]>);
+
+    /// Use the item in the active hand against the current crosshair target.
+    fn interact(&mut self);
 
     /// Set the game mode of the player (creative, survival, etc.)
     fn set_game_mode(&mut self, mode: GameMode);

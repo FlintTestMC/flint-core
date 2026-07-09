@@ -234,19 +234,28 @@ impl<A: FlintAdapter> TestRunner<A> {
                 ActionOutcome::AssertPassed
             }
 
-            ActionType::UseItemOn { pos, face, item } => {
-                // Create player on demand if not already created
+            ActionType::Tp {
+                entity_slot,
+                pos,
+                rot,
+            } => {
+                assert_eq!(
+                    *entity_slot, 0,
+                    "only entity_slot 0 (the player) is supported"
+                );
                 let p = player.get_or_insert_with(|| world.create_player());
-                let pos = [pos[0], pos[1], pos[2]];
+                p.teleport(*pos, *rot);
+                ActionOutcome::Action
+            }
 
-                // Simple mode: if item is specified, set it in hotbar1 and select it
+            ActionType::Interact { item } => {
+                let p = player.get_or_insert_with(|| world.create_player());
                 if let Some(item_id) = item {
                     let item = Item::new(item_id);
                     p.set_slot(PlayerSlot::Hotbar1, Some(&item));
                     p.select_hotbar(1);
                 }
-
-                p.use_item_on(pos, face);
+                p.interact();
                 ActionOutcome::Action
             }
 

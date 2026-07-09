@@ -278,7 +278,7 @@
         },
         "do": {
           "type": "string",
-          "enum": ["place", "place_each", "fill", "remove", "assert", "use_item_on", "set_slot", "select_hotbar"],
+          "enum": ["place", "place_each", "fill", "remove", "assert", "tp", "interact", "set_slot", "select_hotbar"],
           "description": "Type of action to perform"
         }
       },
@@ -390,27 +390,51 @@
         },
         {
           "if": {
-            "properties": { "do": { "const": "use_item_on" } },
+            "properties": { "do": { "const": "tp" } },
             "required": ["do"]
           },
           "then": {
             "properties": {
               "at": true,
               "do": true,
+              "entity_slot": {
+                "type": "integer",
+                "const": 0,
+                "description": "Entity slot to teleport; slot 0 is always the player"
+              },
               "pos": {
-                "$ref": "#/$defs/Coordinate",
-                "description": "Position of the block to interact with"
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Destination [x, y, z]"
               },
-              "face": {
-                "$ref": "#/$defs/BlockFace",
-                "description": "Face of the block to interact with"
-              },
+              "rot": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "Optional rotation [yaw, pitch]"
+              }
+            },
+            "required": ["entity_slot", "pos"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "interact" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
               "item": {
                 "type": "string",
                 "description": "Item to use (optional, uses player's active item if not specified)"
               }
             },
-            "required": ["pos", "face"],
             "additionalProperties": false
           }
         },

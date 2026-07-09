@@ -374,12 +374,19 @@ pub enum ActionType {
         checks: Vec<AssertType>,
     },
 
-    // Player actions (for item interactions)
-    /// Use an item on a block face (e.g., honeycomb on copper, axe on log)
-    UseItemOn {
-        pos: [i32; 3],
-        face: BlockFace,
-        /// Item to use (for simple mode). If not specified, uses player's active item.
+    // Entity/player actions
+    /// Teleport an entity. Entity slot 0 is always the player.
+    Tp {
+        entity_slot: u32,
+        pos: [f64; 3],
+        /// Rotation as [yaw, pitch].
+        #[serde(default)]
+        rot: Option<[f32; 2]>,
+    },
+
+    /// Interact using the item in the player's active hand.
+    Interact {
+        /// Item to use. If not specified, uses the player's active item.
         #[serde(default)]
         item: Option<String>,
     },
@@ -619,11 +626,11 @@ impl TestSpec {
                         }
                     }
                 }
-                ActionType::UseItemOn { pos, .. } => {
-                    self.validate_position(*pos, &region)?;
-                }
-                // SetSlot and SelectHotbar don't have positions to validate
-                ActionType::SetSlot { .. } | ActionType::SelectHotbar { .. } => {}
+                // Player/entity actions do not address a block in the cleanup region.
+                ActionType::Tp { .. }
+                | ActionType::Interact { .. }
+                | ActionType::SetSlot { .. }
+                | ActionType::SelectHotbar { .. } => {}
             }
         }
 
@@ -923,5 +930,38 @@ mod tests {
 
         let stone = Block::new("minecraft:stone");
         assert!(!stone.is_air());
+    }
+
+    #[test]
+    fn test_tp_action_deserializes_with_optional_rotation() {
+        let action: ActionType =
+            serde_json::from_str(r#"{"do":"tp","entity_slot":0,"pos":[1.5,64,2],"rot":[0,90]}"#)
+                .unwrap();
+
+        match action {
+            ActionType::Tp {
+                entity_slot,
+                pos,
+                rot,
+            } => {
+                assert_eq!(entity_slot, 0);
+                assert_eq!(pos, [1.5, 64.0, 2.0]);
+                assert_eq!(rot, Some([0.0, 90.0]));
+            }
+            _ => panic!("expected tp action"),
+        }
+    }
+
+    #[test]
+    fn test_interact_action_deserializes() {
+        let action: ActionType =
+            serde_json::from_str(r#"{"do":"interact","item":"minecraft:bone_meal"}"#).unwrap();
+
+        match action {
+            ActionType::Interact { item } => {
+                assert_eq!(item.as_deref(), Some("minecraft:bone_meal"));
+            }
+            _ => panic!("expected interact action"),
+        }
     }
 }
