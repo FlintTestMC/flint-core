@@ -15,6 +15,13 @@ pub struct ServerInfo {
     pub minecraft_version: String,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct EntityState {
+    pub exists: bool,
+    pub entity_type: Option<String>,
+    pub pos: Option<[f64; 3]>,
+}
+
 // =============================================================================
 // Core Traits
 // =============================================================================
@@ -44,6 +51,24 @@ pub trait FlintWorld: Send + Sync {
 
     /// Set block at position (with neighbor updates)
     fn set_block(&mut self, pos: BlockPos, block: &Block);
+
+    /// Summon an entity with a stable test-local alias.
+    fn summon_entity(
+        &mut self,
+        _alias: &str,
+        _entity_type: &str,
+        _pos: [f64; 3],
+        _nbt: Option<&str>,
+    ) {
+    }
+
+    /// Teleport an implementation-managed entity alias.
+    fn teleport_entity(&mut self, _alias: &str, _pos: [f64; 3], _rot: Option<[f32; 2]>) {}
+
+    /// Read the current entity state for a test-local alias.
+    fn get_entity(&self, _alias: &str) -> EntityState {
+        EntityState::default()
+    }
 
     /// Create a simulated player in this world
     ///

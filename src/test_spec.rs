@@ -369,15 +369,23 @@ pub enum ActionType {
         pos: [i32; 3],
     },
 
+    Summon {
+        entity_alias: String,
+        entity_type: String,
+        pos: [f64; 3],
+        #[serde(default)]
+        nbt: Option<String>,
+    },
+
     // Assertion actions
     Assert {
         checks: Vec<AssertType>,
     },
 
     // Entity/player actions
-    /// Teleport an entity. Entity slot 0 is always the player.
+    /// Teleport an entity alias. Use "player" for the backing bot/player.
     Tp {
-        entity_slot: u32,
+        entity_alias: String,
         pos: [f64; 3],
         /// Rotation as [yaw, pitch].
         #[serde(default)]
@@ -438,6 +446,23 @@ pub struct BlockCheck {
     pub is: BlockSpec,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityCheck {
+    pub entity_alias: String,
+    #[serde(default, rename = "is")]
+    pub entity_type: Option<String>,
+    #[serde(default = "default_exists")]
+    pub exists: bool,
+    #[serde(default)]
+    pub pos: Option<[f64; 3]>,
+    #[serde(default)]
+    pub max_distance: Option<f64>,
+}
+
+fn default_exists() -> bool {
+    true
+}
+
 /// Result of a two-phase test spec load
 pub enum TestSpecLoadResult {
     Loaded(TestSpec),
@@ -473,6 +498,7 @@ where
 pub enum AssertType {
     Block(BlockCheck),
     Inventory(InventoryCheck),
+    Entity(EntityCheck),
 }
 
 impl TestSpec {
@@ -615,18 +641,40 @@ impl TestSpec {
                 ActionType::Remove { pos } => {
                     self.validate_position(*pos, &region)?;
                 }
+                ActionType::Summon { pos, .. } => {
+                    self.validate_position(
+                        [
+                            pos[0].floor() as i32,
+                            pos[1].floor() as i32,
+                            pos[2].floor() as i32,
+                        ],
+                        &region,
+                    )?;
+                }
                 ActionType::Assert { checks } => {
                     for check in checks {
                         match check {
                             AssertType::Block(block) => {
                                 self.validate_position(block.pos, &region)?
                             }
+                            AssertType::Entity(entity) => {
+                                if let Some(pos) = entity.pos {
+                                    self.validate_position(
+                                        [
+                                            pos[0].floor() as i32,
+                                            pos[1].floor() as i32,
+                                            pos[2].floor() as i32,
+                                        ],
+                                        &region,
+                                    )?;
+                                }
+                            }
                             // Inventory checks are not validated because there are not any boundings
                             AssertType::Inventory(_) => {}
                         }
                     }
                 }
-                // Player/entity actions do not address a block in the cleanup region.
+                // Player actions do not address a block in the cleanup region.
                 ActionType::Tp { .. }
                 | ActionType::Interact { .. }
                 | ActionType::SetSlot { .. }
@@ -934,19 +982,45 @@ mod tests {
 
     #[test]
     fn test_tp_action_deserializes_with_optional_rotation() {
+        let action: ActionType = serde_json::from_str(
+            r#"{"do":"tp","entity_alias":"player","pos":[1.5,64,2],"rot":[0,90]}"#,
+        )
+        .unwrap();
+
+        match action {
+            ActionType::Tp {
+                entity_alias,
+                pos,
+                rot,
+            } => {
+                assert_eq!(entity_alias, "player");
+                assert_eq!(pos, [1.5, 64.0, 2.0]);
+                assert_eq!(rot, Some([0.0, 90.0]));
+            }
+            _ => panic!("expected tp action"),
+        }
+    }
+
+    #[test]
+    fn test_tp_action_requires_entity_alias() {
+        let error =
+            serde_json::from_str::<ActionType>(r#"{"do":"tp","pos":[1.5,64,2],"rot":[0,90]}"#)
+                .unwrap_err();
+        assert!(error.to_string().contains("entity_alias"));
+    }
+
+    #[test]
+    fn test_tp_action_accepts_entity_alias() {
         let action: ActionType =
-            serde_json::from_str(r#"{"do":"tp","entity_slot":0,"pos":[1.5,64,2],"rot":[0,90]}"#)
+            serde_json::from_str(r#"{"do":"tp","entity_alias":"falling","pos":[1.5,64,2]}"#)
                 .unwrap();
 
         match action {
             ActionType::Tp {
-                entity_slot,
-                pos,
-                rot,
+                entity_alias, pos, ..
             } => {
-                assert_eq!(entity_slot, 0);
+                assert_eq!(entity_alias, "falling");
                 assert_eq!(pos, [1.5, 64.0, 2.0]);
-                assert_eq!(rot, Some([0.0, 90.0]));
             }
             _ => panic!("expected tp action"),
         }
@@ -962,6 +1036,51 @@ mod tests {
                 assert_eq!(item.as_deref(), Some("minecraft:bone_meal"));
             }
             _ => panic!("expected interact action"),
+        }
+    }
+
+    #[test]
+    fn test_summon_action_deserializes() {
+        let action: ActionType = serde_json::from_str(
+            r#"{"do":"summon","entity_alias":"falling","entity_type":"minecraft:falling_block","pos":[1.5,64,2],"nbt":"{NoGravity:1b}"}"#,
+        )
+        .unwrap();
+
+        match action {
+            ActionType::Summon {
+                entity_alias,
+                entity_type,
+                pos,
+                nbt,
+            } => {
+                assert_eq!(entity_alias, "falling");
+                assert_eq!(entity_type, "minecraft:falling_block");
+                assert_eq!(pos, [1.5, 64.0, 2.0]);
+                assert_eq!(nbt.as_deref(), Some("{NoGravity:1b}"));
+            }
+            _ => panic!("expected summon action"),
+        }
+    }
+
+    #[test]
+    fn test_entity_assert_deserializes() {
+        let check: AssertType = serde_json::from_str(
+            r#"{"entity_alias":"falling","is":"minecraft:falling_block","pos":[1.5,64,2],"max_distance":0.5}"#,
+        )
+        .unwrap();
+
+        match check {
+            AssertType::Entity(entity) => {
+                assert_eq!(entity.entity_alias, "falling");
+                assert_eq!(
+                    entity.entity_type.as_deref(),
+                    Some("minecraft:falling_block")
+                );
+                assert!(entity.exists);
+                assert_eq!(entity.pos, Some([1.5, 64.0, 2.0]));
+                assert_eq!(entity.max_distance, Some(0.5));
+            }
+            _ => panic!("expected entity assert"),
         }
     }
 }

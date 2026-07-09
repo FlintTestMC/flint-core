@@ -8,7 +8,7 @@ use crate::results::{
 };
 use crate::test_spec::{ActionType, AssertType, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
-use crate::traits::{FlintAdapter, FlintPlayer, FlintWorld};
+use crate::traits::{EntityState, FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
 use std::sync::Arc;
 use std::time::Instant;
@@ -177,6 +177,16 @@ impl<A: FlintAdapter> TestRunner<A> {
                 ActionOutcome::Action
             }
 
+            ActionType::Summon {
+                entity_alias,
+                entity_type,
+                pos,
+                nbt,
+            } => {
+                world.summon_entity(entity_alias, entity_type, *pos, nbt.as_deref());
+                ActionOutcome::Action
+            }
+
             ActionType::Assert { checks } => {
                 for check in checks {
                     match check {
@@ -225,6 +235,37 @@ impl<A: FlintAdapter> TestRunner<A> {
                                 ));
                             }
                         }
+                        AssertType::Entity(entity) => {
+                            let actual = world.get_entity(&entity.entity_alias);
+                            if !entity_matches(
+                                &actual,
+                                entity.exists,
+                                entity.entity_type.as_deref(),
+                                entity.pos,
+                                entity.max_distance,
+                            ) {
+                                return ActionOutcome::AssertFailed(AssertFailure {
+                                    tick: _tick,
+                                    error_message: format!(
+                                        "Entity mismatch for alias '{}'",
+                                        entity.entity_alias
+                                    ),
+                                    position: entity
+                                        .pos
+                                        .map(|pos| {
+                                            AssertPosition::from_array([
+                                                pos[0].floor() as i32,
+                                                pos[1].floor() as i32,
+                                                pos[2].floor() as i32,
+                                            ])
+                                        })
+                                        .unwrap_or_else(|| AssertPosition::from_array([0, 0, 0])),
+                                    execution_time_ms: None,
+                                    expected: InfoType::String(format!("{entity:?}")),
+                                    actual: InfoType::String(format!("{actual:?}")),
+                                });
+                            }
+                        }
                         #[allow(unused)]
                         _ => {
                             println!("Unsupported assertion type: {:?}", check);
@@ -235,16 +276,16 @@ impl<A: FlintAdapter> TestRunner<A> {
             }
 
             ActionType::Tp {
-                entity_slot,
+                entity_alias,
                 pos,
                 rot,
             } => {
-                assert_eq!(
-                    *entity_slot, 0,
-                    "only entity_slot 0 (the player) is supported"
-                );
-                let p = player.get_or_insert_with(|| world.create_player());
-                p.teleport(*pos, *rot);
+                if entity_alias == "player" {
+                    let p = player.get_or_insert_with(|| world.create_player());
+                    p.teleport(*pos, *rot);
+                } else {
+                    world.teleport_entity(entity_alias, *pos, *rot);
+                }
                 ActionOutcome::Action
             }
 
@@ -338,6 +379,42 @@ fn item_matches(actual: &Item, expected: &Item) -> bool {
             }
         } else {
             // Property expected but not found in actual item - this is a mismatch
+            return false;
+        }
+    }
+    true
+}
+
+fn entity_matches(
+    actual: &EntityState,
+    expected_exists: bool,
+    expected_type: Option<&str>,
+    expected_pos: Option<[f64; 3]>,
+    max_distance: Option<f64>,
+) -> bool {
+    if actual.exists != expected_exists {
+        return false;
+    }
+    if !expected_exists {
+        return true;
+    }
+    if let Some(expected_type) = expected_type
+        && actual.entity_type.as_deref() != Some(expected_type)
+    {
+        return false;
+    }
+    if let Some(expected_pos) = expected_pos {
+        let Some(actual_pos) = actual.pos else {
+            return false;
+        };
+        let max_distance = max_distance.unwrap_or(0.25);
+        let distance = actual_pos
+            .into_iter()
+            .zip(expected_pos)
+            .map(|(actual, expected)| (actual - expected).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        if distance > max_distance {
             return false;
         }
     }
