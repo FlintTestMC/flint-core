@@ -3,8 +3,8 @@
 //! The `TestRunner` loads tests and executes them against a server adapter.
 
 use crate::results::{
-    ActionOutcome, AssertFailure, AssertPosition, AssertionResult, InfoType, TestResult,
-    TestSummary,
+    ActionOutcome, AssertEntityFail, AssertFailure, AssertPosition, AssertionResult, InfoType,
+    TestResult, TestSummary,
 };
 use crate::test_spec::{ActionType, AssertType, EntityNbt, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
@@ -243,26 +243,9 @@ impl<A: FlintAdapter> TestRunner<A> {
                                 .unwrap_or_default();
                             let actual = world.get_entity(&entity.entity_alias, &requested_nbt);
                             if !entity_matches(&actual, entity) {
-                                return ActionOutcome::AssertFailed(AssertFailure {
-                                    tick: _tick,
-                                    error_message: format!(
-                                        "Entity mismatch for alias '{}'",
-                                        entity.entity_alias
-                                    ),
-                                    position: entity
-                                        .pos
-                                        .map(|pos| {
-                                            AssertPosition::from_array([
-                                                pos[0].floor() as i32,
-                                                pos[1].floor() as i32,
-                                                pos[2].floor() as i32,
-                                            ])
-                                        })
-                                        .unwrap_or_else(|| AssertPosition::from_array([0, 0, 0])),
-                                    execution_time_ms: None,
-                                    expected: InfoType::String(format!("{entity:?}")),
-                                    actual: InfoType::String(format!("{actual:?}")),
-                                });
+                                return ActionOutcome::AssertFailed(
+                                    AssertEntityFail::new(_tick, entity, &actual).into(),
+                                );
                             }
                         }
                         #[allow(unused)]

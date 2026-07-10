@@ -5,6 +5,7 @@
 
 use crate::Block;
 use crate::test_spec::{EntityNbt, GameMode, Item, PlayerSlot};
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -17,7 +18,7 @@ pub struct ServerInfo {
     pub minecraft_version: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EntityState {
     pub exists: bool,
     pub entity_type: Option<String>,

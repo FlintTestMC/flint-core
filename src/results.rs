@@ -1,5 +1,6 @@
 use crate::results::AssertionResult::Failure;
-use crate::test_spec::Block;
+use crate::test_spec::{Block, EntityCheck};
+use crate::traits::EntityState;
 use crate::{Item, PlayerSlot, format};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -22,15 +23,20 @@ pub enum InfoType {
     Blocks(Vec<Block>),
     Item(Item),
     Slot(PlayerSlot),
+    EntityCheck(Box<EntityCheck>),
+    EntityState(Box<EntityState>),
 }
 
 impl InfoType {
     pub fn get_string(&self) -> Option<String> {
         match self {
             InfoType::String(s) => Some(s.clone()),
-            InfoType::Block(_) | InfoType::Blocks(_) | InfoType::Item(_) | InfoType::Slot(_) => {
-                None
-            }
+            InfoType::Block(_)
+            | InfoType::Blocks(_)
+            | InfoType::Item(_)
+            | InfoType::Slot(_)
+            | InfoType::EntityCheck(_)
+            | InfoType::EntityState(_) => None,
         }
     }
     fn type_string_generator(val: &InfoType) -> String {
@@ -44,6 +50,8 @@ impl InfoType {
                 .join(" or "),
             InfoType::Slot(slot) => slot.to_string(),
             InfoType::Item(item) => item.to_command(),
+            InfoType::EntityCheck(entity) => format!("{entity:?}"),
+            InfoType::EntityState(entity) => format!("{entity:?}"),
         }
     }
 }
@@ -79,6 +87,50 @@ pub struct AssertFailure {
     pub expected: InfoType,
     /// What was found
     pub actual: InfoType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssertEntityFail {
+    pub tick: u32,
+    pub expected: EntityCheck,
+    pub actual: EntityState,
+}
+
+impl AssertEntityFail {
+    pub fn new(tick: u32, expected: &EntityCheck, actual: &EntityState) -> Self {
+        Self {
+            tick,
+            expected: expected.clone(),
+            actual: actual.clone(),
+        }
+    }
+}
+
+impl From<AssertEntityFail> for AssertFailure {
+    fn from(failure: AssertEntityFail) -> Self {
+        let position = failure
+            .expected
+            .pos
+            .map(|pos| {
+                [
+                    pos[0].floor() as i32,
+                    pos[1].floor() as i32,
+                    pos[2].floor() as i32,
+                ]
+            })
+            .unwrap_or([0, 0, 0]);
+        Self {
+            tick: failure.tick,
+            error_message: format!(
+                "Entity mismatch for alias '{}'",
+                failure.expected.entity_alias
+            ),
+            position: AssertPosition::from_array(position),
+            execution_time_ms: None,
+            expected: InfoType::EntityCheck(Box::new(failure.expected)),
+            actual: InfoType::EntityState(Box::new(failure.actual)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
