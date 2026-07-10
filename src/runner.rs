@@ -6,7 +6,7 @@ use crate::results::{
     ActionOutcome, AssertFailure, AssertPosition, AssertionResult, InfoType, TestResult,
     TestSummary,
 };
-use crate::test_spec::{ActionType, AssertType, Item, PlayerSlot};
+use crate::test_spec::{ActionType, AssertType, EntityNbt, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{EntityState, FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
@@ -402,7 +402,7 @@ fn entity_matches(
     max_distance: Option<f64>,
     expected_rot: Option<[f32; 2]>,
     max_rotation_delta: Option<f32>,
-    expected_nbt: Option<&crate::test_spec::EntityNbt>,
+    expected_nbt: Option<&EntityNbt>,
 ) -> bool {
     if actual.exists != expected_exists {
         return false;
