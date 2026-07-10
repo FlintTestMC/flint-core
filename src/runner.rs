@@ -393,6 +393,7 @@ fn item_matches(actual: &Item, expected: &Item) -> bool {
     true
 }
 
+#[expect(clippy::too_many_arguments)]
 fn entity_matches(
     actual: &EntityState,
     expected_exists: bool,
