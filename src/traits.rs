@@ -4,8 +4,9 @@
 //! to provide the actual block and player operations.
 
 use crate::Block;
-use crate::test_spec::{GameMode, Item, PlayerSlot};
+use crate::test_spec::{EntityNbt, GameMode, Item, PlayerSlot};
 use std::any::Any;
+use std::collections::HashMap;
 
 /// Position in world coordinates [x, y, z]
 pub type BlockPos = [i32; 3];
@@ -21,6 +22,8 @@ pub struct EntityState {
     pub exists: bool,
     pub entity_type: Option<String>,
     pub pos: Option<[f64; 3]>,
+    pub rot: Option<[f32; 2]>,
+    pub nbt: HashMap<String, String>,
 }
 
 // =============================================================================
@@ -59,7 +62,7 @@ pub trait FlintWorld: Send + Sync {
         _alias: &str,
         _entity_type: &str,
         _pos: [f64; 3],
-        _nbt: Option<&str>,
+        _nbt: Option<&EntityNbt>,
     ) {
     }
 
@@ -67,7 +70,7 @@ pub trait FlintWorld: Send + Sync {
     fn teleport_entity(&mut self, _alias: &str, _pos: [f64; 3], _rot: Option<[f32; 2]>) {}
 
     /// Read the current entity state for a test-local alias.
-    fn get_entity(&self, _alias: &str) -> EntityState {
+    fn get_entity(&self, _alias: &str, _requested_nbt: &[String]) -> EntityState {
         EntityState::default()
     }
 

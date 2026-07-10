@@ -183,7 +183,7 @@ impl<A: FlintAdapter> TestRunner<A> {
                 pos,
                 nbt,
             } => {
-                world.summon_entity(entity_alias, entity_type, *pos, nbt.as_deref());
+                world.summon_entity(entity_alias, entity_type, *pos, nbt.as_ref());
                 ActionOutcome::Action
             }
 
@@ -236,13 +236,21 @@ impl<A: FlintAdapter> TestRunner<A> {
                             }
                         }
                         AssertType::Entity(entity) => {
-                            let actual = world.get_entity(&entity.entity_alias);
+                            let requested_nbt = entity
+                                .nbt
+                                .as_ref()
+                                .map(|nbt| nbt.requested_paths())
+                                .unwrap_or_default();
+                            let actual = world.get_entity(&entity.entity_alias, &requested_nbt);
                             if !entity_matches(
                                 &actual,
                                 entity.exists,
                                 entity.entity_type.as_deref(),
                                 entity.pos,
                                 entity.max_distance,
+                                entity.rot,
+                                entity.max_rotation_delta,
+                                entity.nbt.as_ref(),
                             ) {
                                 return ActionOutcome::AssertFailed(AssertFailure {
                                     tick: _tick,
@@ -391,6 +399,9 @@ fn entity_matches(
     expected_type: Option<&str>,
     expected_pos: Option<[f64; 3]>,
     max_distance: Option<f64>,
+    expected_rot: Option<[f32; 2]>,
+    max_rotation_delta: Option<f32>,
+    expected_nbt: Option<&crate::test_spec::EntityNbt>,
 ) -> bool {
     if actual.exists != expected_exists {
         return false;
@@ -418,5 +429,32 @@ fn entity_matches(
             return false;
         }
     }
+    if let Some(expected_rot) = expected_rot {
+        let Some(actual_rot) = actual.rot else {
+            return false;
+        };
+        let max_delta = max_rotation_delta.unwrap_or(0.5);
+        if actual_rot
+            .into_iter()
+            .zip(expected_rot)
+            .any(|(actual, expected)| (actual - expected).abs() > max_delta)
+        {
+            return false;
+        }
+    }
+    if let Some(expected_nbt) = expected_nbt {
+        for (key, expected) in expected_nbt.expected_values() {
+            let Some(actual) = actual.nbt.get(&key) else {
+                return false;
+            };
+            if normalize_entity_nbt_value(actual) != normalize_entity_nbt_value(&expected) {
+                return false;
+            }
+        }
+    }
     true
+}
+
+fn normalize_entity_nbt_value(value: &str) -> String {
+    value.trim().trim_matches('"').to_string()
 }
