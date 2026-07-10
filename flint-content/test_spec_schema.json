@@ -296,7 +296,7 @@
           "$ref": "#/$defs/NumericCoordinate",
           "description": "Optional expected entity position"
         },
-        "max_distance": {
+        "position_tolerance": {
           "type": "number",
           "minimum": 0,
           "description": "Allowed distance from expected position"
@@ -308,13 +308,14 @@
           "maxItems": 2,
           "description": "Optional expected entity rotation [yaw, pitch]"
         },
-        "max_rotation_delta": {
+        "rotation_tolerance": {
           "type": "number",
           "minimum": 0,
           "description": "Allowed absolute delta for each rotation component"
         },
         "nbt": {
-          "$ref": "#/$defs/EntityNbt",
+          "type": "object",
+          "additionalProperties": true,
           "description": "Optional expected entity NBT fields. Object keys are queried as data paths, e.g. Item.id."
         }
       },

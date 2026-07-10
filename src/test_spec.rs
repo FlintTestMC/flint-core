@@ -679,11 +679,11 @@ pub struct EntityCheck {
     #[serde(default)]
     pub pos: Option<[f64; 3]>,
     #[serde(default)]
-    pub max_distance: Option<f64>,
+    pub position_tolerance: Option<f64>,
     #[serde(default)]
     pub rot: Option<[f32; 2]>,
     #[serde(default)]
-    pub max_rotation_delta: Option<f32>,
+    pub rotation_tolerance: Option<f32>,
     #[serde(default)]
     pub nbt: Option<EntityNbt>,
 }
@@ -698,20 +698,26 @@ impl<'de> Deserialize<'de> for EntityCheck {
         let entity_type = take_optional(&mut fields, "is")?;
         let exists = take_optional(&mut fields, "exists")?.unwrap_or_else(default_exists);
         let pos = take_optional(&mut fields, "pos")?;
-        let max_distance = take_optional(&mut fields, "max_distance")?;
+        let position_tolerance = take_optional(&mut fields, "position_tolerance")?;
         let rot = take_optional(&mut fields, "rot")?;
-        let max_rotation_delta = take_optional(&mut fields, "max_rotation_delta")?;
+        let rotation_tolerance = take_optional(&mut fields, "rotation_tolerance")?;
         let explicit_nbt = take_optional(&mut fields, "nbt")?;
         let nbt = merge_entity_nbt(explicit_nbt, entity_nbt_from_fields(fields));
+
+        if matches!(nbt, Some(EntityNbt::Raw(_))) {
+            return Err(serde::de::Error::custom(
+                "raw SNBT is not supported in entity assertions; use an object of NBT paths and expected values",
+            ));
+        }
 
         Ok(EntityCheck {
             entity_alias,
             entity_type,
             exists,
             pos,
-            max_distance,
+            position_tolerance,
             rot,
-            max_rotation_delta,
+            rotation_tolerance,
             nbt,
         })
     }
@@ -1356,7 +1362,7 @@ mod tests {
     #[test]
     fn test_entity_assert_deserializes() {
         let check: AssertType = serde_json::from_str(
-            r#"{"entity_alias":"falling","is":"minecraft:falling_block","pos":[1.5,64,2],"max_distance":0.5,"rot":[90,0],"max_rotation_delta":1,"NoGravity":"1b"}"#,
+            r#"{"entity_alias":"falling","is":"minecraft:falling_block","pos":[1.5,64,2],"position_tolerance":0.5,"rot":[90,0],"rotation_tolerance":1,"NoGravity":"1b"}"#,
         )
         .unwrap();
 
@@ -1369,9 +1375,9 @@ mod tests {
                 );
                 assert!(entity.exists);
                 assert_eq!(entity.pos, Some([1.5, 64.0, 2.0]));
-                assert_eq!(entity.max_distance, Some(0.5));
+                assert_eq!(entity.position_tolerance, Some(0.5));
                 assert_eq!(entity.rot, Some([90.0, 0.0]));
-                assert_eq!(entity.max_rotation_delta, Some(1.0));
+                assert_eq!(entity.rotation_tolerance, Some(1.0));
                 assert_eq!(
                     entity.nbt.expect("expected nbt").to_snbt(),
                     "{NoGravity:1b}"
@@ -1379,5 +1385,15 @@ mod tests {
             }
             _ => panic!("expected entity assert"),
         }
+    }
+
+    #[test]
+    fn test_entity_assert_rejects_raw_nbt() {
+        let error = serde_json::from_str::<EntityCheck>(
+            r#"{"entity_alias":"falling","nbt":"{NoGravity:1b}"}"#,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("raw SNBT is not supported"));
     }
 }
