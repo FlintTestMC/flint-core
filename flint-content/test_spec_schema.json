@@ -322,17 +322,9 @@
       "additionalProperties": true
     },
     "EntityNbt": {
-      "oneOf": [
-        {
-          "type": "string",
-          "description": "Raw Minecraft SNBT compound for summon actions"
-        },
-        {
-          "type": "object",
-          "description": "Structured entity NBT fields. Values may be strings, numbers, booleans, arrays, or objects.",
-          "additionalProperties": true
-        }
-      ]
+      "type": "object",
+      "description": "Structured entity NBT fields. Values may be strings, numbers, booleans, arrays, or objects.",
+      "additionalProperties": true
     },
     "TimelineEntry": {
       "type": "object",

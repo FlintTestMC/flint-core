@@ -6,7 +6,7 @@ use crate::results::{
     ActionOutcome, AssertEntityFail, AssertFailure, AssertPosition, AssertionResult, InfoType,
     TestResult, TestSummary,
 };
-use crate::test_spec::{ActionType, AssertType, EntityNbt, Item, PlayerSlot};
+use crate::test_spec::{ActionType, AssertType, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{EntityState, FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
@@ -407,9 +407,6 @@ pub fn entity_matches(actual: &EntityState, expected: &crate::test_spec::EntityC
         }
     }
     if let Some(expected_nbt) = expected.nbt.as_ref() {
-        if matches!(expected_nbt, EntityNbt::Raw(_)) {
-            return false;
-        }
         for (key, expected) in expected_nbt.expected_values() {
             let Some(actual) = actual.nbt.get(&key) else {
                 return false;
@@ -430,7 +427,6 @@ fn normalize_entity_nbt_value(value: &str) -> String {
 mod entity_match_tests {
     use super::*;
     use crate::test_spec::EntityCheck;
-    use std::collections::HashMap;
 
     fn check_with_rotation(rot: [f32; 2], tolerance: f32) -> EntityCheck {
         EntityCheck {
@@ -457,19 +453,5 @@ mod entity_match_tests {
             &actual,
             &check_with_rotation([179.0, 0.0], 2.0)
         ));
-    }
-
-    #[test]
-    fn programmatic_raw_nbt_assertion_never_succeeds_silently() {
-        let actual = EntityState {
-            exists: true,
-            nbt: HashMap::new(),
-            ..EntityState::default()
-        };
-        let mut expected = check_with_rotation([0.0, 0.0], 0.5);
-        expected.rot = None;
-        expected.nbt = Some(EntityNbt::Raw("{NoGravity:1b}".to_string()));
-
-        assert!(!entity_matches(&actual, &expected));
     }
 }

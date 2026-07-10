@@ -341,46 +341,33 @@ fn json_value_to_string(value: &serde_json::Value) -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum EntityNbt {
-    Raw(String),
-    Compound(FxHashMap<String, serde_json::Value>),
-}
+#[serde(transparent)]
+pub struct EntityNbt(FxHashMap<String, serde_json::Value>);
 
 impl EntityNbt {
     pub fn to_snbt(&self) -> String {
-        match self {
-            EntityNbt::Raw(raw) => raw.clone(),
-            EntityNbt::Compound(fields) => {
-                if fields.is_empty() {
-                    "{}".to_string()
-                } else {
-                    let fields = fields
-                        .iter()
-                        .map(|(key, value)| format!("{key}:{}", json_value_to_snbt(value)))
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    format!("{{{fields}}}")
-                }
-            }
+        if self.0.is_empty() {
+            "{}".to_string()
+        } else {
+            let fields = self
+                .0
+                .iter()
+                .map(|(key, value)| format!("{key}:{}", json_value_to_snbt(value)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("{{{fields}}}")
         }
     }
 
     pub fn requested_paths(&self) -> Vec<String> {
-        match self {
-            EntityNbt::Raw(_) => Vec::new(),
-            EntityNbt::Compound(fields) => fields.keys().cloned().collect(),
-        }
+        self.0.keys().cloned().collect()
     }
 
     pub fn expected_values(&self) -> FxHashMap<String, String> {
-        match self {
-            EntityNbt::Raw(_) => FxHashMap::default(),
-            EntityNbt::Compound(fields) => fields
-                .iter()
-                .map(|(key, value)| (key.clone(), json_value_to_entity_assert_string(value)))
-                .collect(),
-        }
+        self.0
+            .iter()
+            .map(|(key, value)| (key.clone(), json_value_to_entity_assert_string(value)))
+            .collect()
     }
 }
 
@@ -628,12 +615,11 @@ fn merge_entity_nbt(
     match (explicit, flattened) {
         (None, None) => None,
         (Some(nbt), None) => Some(nbt),
-        (None, Some(fields)) => Some(EntityNbt::Compound(fields)),
-        (Some(EntityNbt::Compound(mut explicit)), Some(flattened)) => {
+        (None, Some(fields)) => Some(EntityNbt(fields)),
+        (Some(EntityNbt(mut explicit)), Some(flattened)) => {
             explicit.extend(flattened);
-            Some(EntityNbt::Compound(explicit))
+            Some(EntityNbt(explicit))
         }
-        (Some(raw @ EntityNbt::Raw(_)), Some(_)) => Some(raw),
     }
 }
 
@@ -703,12 +689,6 @@ impl<'de> Deserialize<'de> for EntityCheck {
         let rotation_tolerance = take_optional(&mut fields, "rotation_tolerance")?;
         let explicit_nbt = take_optional(&mut fields, "nbt")?;
         let nbt = merge_entity_nbt(explicit_nbt, entity_nbt_from_fields(fields));
-
-        if matches!(nbt, Some(EntityNbt::Raw(_))) {
-            return Err(serde::de::Error::custom(
-                "raw SNBT is not supported in entity assertions; use an object of NBT paths and expected values",
-            ));
-        }
 
         Ok(EntityCheck {
             entity_alias,
@@ -1328,23 +1308,17 @@ mod tests {
     }
 
     #[test]
-    fn test_summon_action_accepts_raw_nbt() {
-        let action: ActionType = serde_json::from_str(
+    fn test_summon_action_rejects_raw_nbt() {
+        let error = serde_json::from_str::<ActionType>(
             r#"{"do":"summon","entity_alias":"falling","entity_type":"minecraft:falling_block","pos":[1.5,64,2],"nbt":"{NoGravity:1b}"}"#,
         )
-        .unwrap();
+        .unwrap_err();
 
-        match action {
-            ActionType::Summon { nbt, .. } => {
-                let nbt = nbt.expect("expected nbt");
-                assert_eq!(nbt.to_snbt(), "{NoGravity:1b}");
-            }
-            _ => panic!("expected summon action"),
-        }
+        assert!(error.to_string().contains("invalid type"));
     }
 
     #[test]
-    fn test_summon_action_accepts_nested_nbt_field_for_compatibility() {
+    fn test_summon_action_accepts_nested_nbt_field() {
         let action: ActionType = serde_json::from_str(
             r#"{"do":"summon","entity_alias":"falling","entity_type":"minecraft:falling_block","pos":[1.5,64,2],"nbt":{"NoGravity":"1b"}}"#,
         )
@@ -1394,6 +1368,6 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(error.to_string().contains("raw SNBT is not supported"));
+        assert!(error.to_string().contains("invalid type"));
     }
 }
