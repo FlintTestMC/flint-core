@@ -272,7 +272,9 @@ impl<A: FlintAdapter> TestRunner<A> {
             }
 
             ActionType::Interact { item } => {
-                let p = player.get_or_insert_with(|| world.create_player());
+                let p = player
+                    .as_mut()
+                    .expect("interact requires an existing player");
                 if let Some(item_id) = item {
                     let item = Item::new(item_id);
                     p.set_slot(PlayerSlot::Hotbar1, Some(&item));
