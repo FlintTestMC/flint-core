@@ -65,6 +65,13 @@
       "maxItems": 3,
       "description": "A 3D coordinate [x, y, z]"
     },
+    "NumericCoordinate": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "A 3D coordinate [x, y, z] that may include fractional entity positions"
+    },
     "Region": {
       "type": "array",
       "items": { "$ref": "#/$defs/Coordinate" },
@@ -268,6 +275,57 @@
       },
       "additionalProperties": false
     },
+    "EntityCheck": {
+      "type": "object",
+      "required": ["entity_alias"],
+      "properties": {
+        "entity_alias": {
+          "type": "string",
+          "description": "Test-local entity alias. Use aliases created by summon, or implementation-defined aliases."
+        },
+        "is": {
+          "type": "string",
+          "description": "Optional expected entity type, e.g. 'minecraft:item'"
+        },
+        "exists": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the entity is expected to exist"
+        },
+        "pos": {
+          "$ref": "#/$defs/NumericCoordinate",
+          "description": "Optional expected entity position"
+        },
+        "position_tolerance": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Allowed distance from expected position"
+        },
+        "rot": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Optional expected entity rotation [yaw, pitch]"
+        },
+        "rotation_tolerance": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Allowed absolute delta for each rotation component"
+        },
+        "nbt": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Optional expected entity NBT fields. Object keys are queried as data paths, e.g. Item.id."
+        }
+      },
+      "additionalProperties": true
+    },
+    "EntityNbt": {
+      "type": "object",
+      "description": "Structured entity NBT fields. Values may be strings, numbers, booleans, arrays, or objects.",
+      "additionalProperties": true
+    },
     "TimelineEntry": {
       "type": "object",
       "required": ["at", "do"],
@@ -278,7 +336,7 @@
         },
         "do": {
           "type": "string",
-          "enum": ["place", "place_each", "fill", "remove", "assert", "use_item_on", "set_slot", "select_hotbar"],
+          "enum": ["place", "place_each", "fill", "remove", "summon", "assert", "tp", "interact", "set_slot", "select_hotbar"],
           "description": "Type of action to perform"
         }
       },
@@ -366,6 +424,36 @@
         },
         {
           "if": {
+            "properties": { "do": { "const": "summon" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
+              "entity_alias": {
+                "type": "string",
+                "description": "Test-local alias assigned to the summoned entity"
+              },
+              "entity_type": {
+                "type": "string",
+                "description": "Minecraft entity type to summon, e.g. 'minecraft:item'"
+              },
+              "pos": {
+                "$ref": "#/$defs/NumericCoordinate",
+                "description": "Summon position [x, y, z]"
+              },
+              "nbt": {
+                "$ref": "#/$defs/EntityNbt",
+                "description": "Optional entity NBT. Implementations may inject alias metadata."
+              }
+            },
+            "required": ["entity_alias", "entity_type", "pos"],
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
             "properties": { "do": { "const": "assert" } },
             "required": ["do"]
           },
@@ -378,7 +466,8 @@
                 "items": {
                   "oneOf": [
                     { "$ref": "#/$defs/BlockCheck" },
-                    { "$ref": "#/$defs/InventoryCheck" }
+                    { "$ref": "#/$defs/InventoryCheck" },
+                    { "$ref": "#/$defs/EntityCheck" }
                   ]
                 },
                 "description": "List of checks to perform"
@@ -390,27 +479,47 @@
         },
         {
           "if": {
-            "properties": { "do": { "const": "use_item_on" } },
+            "properties": { "do": { "const": "tp" } },
             "required": ["do"]
           },
           "then": {
             "properties": {
               "at": true,
               "do": true,
+              "entity_alias": {
+                "type": "string",
+                "description": "Entity alias to teleport. Use 'player' for the backing player."
+              },
               "pos": {
-                "$ref": "#/$defs/Coordinate",
-                "description": "Position of the block to interact with"
+                "$ref": "#/$defs/NumericCoordinate",
+                "description": "Destination [x, y, z]"
               },
-              "face": {
-                "$ref": "#/$defs/BlockFace",
-                "description": "Face of the block to interact with"
-              },
+              "rot": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "Optional rotation [yaw, pitch]"
+              }
+            },
+            "required": ["entity_alias", "pos"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": { "do": { "const": "interact" } },
+            "required": ["do"]
+          },
+          "then": {
+            "properties": {
+              "at": true,
+              "do": true,
               "item": {
                 "type": "string",
                 "description": "Item to use (optional, uses player's active item if not specified)"
               }
             },
-            "required": ["pos", "face"],
             "additionalProperties": false
           }
         },

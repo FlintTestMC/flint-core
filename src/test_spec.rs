@@ -339,6 +339,91 @@ fn json_value_to_string(value: &serde_json::Value) -> String {
         _ => value.to_string(),
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EntityNbt(FxHashMap<String, serde_json::Value>);
+
+impl EntityNbt {
+    pub fn to_snbt(&self) -> String {
+        if self.0.is_empty() {
+            "{}".to_string()
+        } else {
+            let fields = self
+                .0
+                .iter()
+                .map(|(key, value)| format!("{key}:{}", json_value_to_snbt(value)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("{{{fields}}}")
+        }
+    }
+
+    pub fn requested_paths(&self) -> Vec<String> {
+        self.0.keys().cloned().collect()
+    }
+
+    pub fn expected_values(&self) -> FxHashMap<String, String> {
+        self.0
+            .iter()
+            .map(|(key, value)| (key.clone(), json_value_to_entity_assert_string(value)))
+            .collect()
+    }
+}
+
+fn json_value_to_snbt(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => {
+            if is_raw_snbt_literal(s) {
+                s.clone()
+            } else {
+                serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
+            }
+        }
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Array(values) => {
+            let values = values
+                .iter()
+                .map(json_value_to_snbt)
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("[{values}]")
+        }
+        serde_json::Value::Object(fields) => {
+            let fields = fields
+                .iter()
+                .map(|(key, value)| format!("{key}:{}", json_value_to_snbt(value)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("{{{fields}}}")
+        }
+    }
+}
+
+fn json_value_to_entity_assert_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Null => "null".to_string(),
+        _ => json_value_to_snbt(value),
+    }
+}
+
+fn is_raw_snbt_literal(value: &str) -> bool {
+    let value = value.trim();
+    value.starts_with('{')
+        || value.starts_with('[')
+        || value.eq_ignore_ascii_case("true")
+        || value.eq_ignore_ascii_case("false")
+        || value
+            .strip_suffix(|c: char| {
+                matches!(c, 'b' | 'B' | 's' | 'S' | 'l' | 'L' | 'f' | 'F' | 'd' | 'D')
+            })
+            .is_some_and(|number| !number.is_empty() && number.parse::<f64>().is_ok())
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockFace {
@@ -350,7 +435,7 @@ pub enum BlockFace {
     West,   // -X
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 pub enum ActionType {
     // Block actions
@@ -369,17 +454,32 @@ pub enum ActionType {
         pos: [i32; 3],
     },
 
+    Summon {
+        entity_alias: String,
+        entity_type: String,
+        pos: [f64; 3],
+        #[serde(default)]
+        nbt: Option<EntityNbt>,
+    },
+
     // Assertion actions
     Assert {
         checks: Vec<AssertType>,
     },
 
-    // Player actions (for item interactions)
-    /// Use an item on a block face (e.g., honeycomb on copper, axe on log)
-    UseItemOn {
-        pos: [i32; 3],
-        face: BlockFace,
-        /// Item to use (for simple mode). If not specified, uses player's active item.
+    // Entity/player actions
+    /// Teleport an entity alias. Use "player" for the backing bot/player.
+    Tp {
+        entity_alias: String,
+        pos: [f64; 3],
+        /// Rotation as [yaw, pitch].
+        #[serde(default)]
+        rot: Option<[f32; 2]>,
+    },
+
+    /// Interact using the item in the player's active hand.
+    Interact {
+        /// Item to use. If not specified, uses the player's active item.
         #[serde(default)]
         item: Option<String>,
     },
@@ -397,6 +497,130 @@ pub enum ActionType {
     SelectHotbar {
         slot: u8,
     },
+}
+
+impl<'de> Deserialize<'de> for ActionType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let mut fields = serde_json::Map::<String, serde_json::Value>::deserialize(deserializer)?;
+        let action = take_required::<String, D::Error>(&mut fields, "do")?;
+        match action.as_str() {
+            "place" => Ok(ActionType::Place {
+                pos: take_required(&mut fields, "pos")?,
+                block: take_required(&mut fields, "block")?,
+            }),
+            "place_each" => Ok(ActionType::PlaceEach {
+                blocks: take_required(&mut fields, "blocks")?,
+            }),
+            "fill" => Ok(ActionType::Fill {
+                region: take_required(&mut fields, "region")?,
+                with: take_required(&mut fields, "with")?,
+            }),
+            "remove" => Ok(ActionType::Remove {
+                pos: take_required(&mut fields, "pos")?,
+            }),
+            "summon" => {
+                let entity_alias = take_required(&mut fields, "entity_alias")?;
+                let entity_type = take_required(&mut fields, "entity_type")?;
+                let pos = take_required(&mut fields, "pos")?;
+                let explicit_nbt = take_optional(&mut fields, "nbt")?;
+                let nbt = merge_entity_nbt(explicit_nbt, entity_nbt_from_fields(fields));
+                Ok(ActionType::Summon {
+                    entity_alias,
+                    entity_type,
+                    pos,
+                    nbt,
+                })
+            }
+            "assert" => Ok(ActionType::Assert {
+                checks: take_required(&mut fields, "checks")?,
+            }),
+            "tp" => Ok(ActionType::Tp {
+                entity_alias: take_required(&mut fields, "entity_alias")?,
+                pos: take_required(&mut fields, "pos")?,
+                rot: take_optional(&mut fields, "rot")?,
+            }),
+            "interact" => Ok(ActionType::Interact {
+                item: take_optional(&mut fields, "item")?,
+            }),
+            "set_slot" => Ok(ActionType::SetSlot {
+                slot: take_required(&mut fields, "slot")?,
+                item: take_optional(&mut fields, "item")?,
+                count: take_optional(&mut fields, "count")?.unwrap_or_else(default_count),
+            }),
+            "select_hotbar" => Ok(ActionType::SelectHotbar {
+                slot: take_required(&mut fields, "slot")?,
+            }),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &[
+                    "place",
+                    "place_each",
+                    "fill",
+                    "remove",
+                    "summon",
+                    "assert",
+                    "tp",
+                    "interact",
+                    "set_slot",
+                    "select_hotbar",
+                ],
+            )),
+        }
+    }
+}
+
+fn take_required<T, E>(
+    fields: &mut serde_json::Map<String, serde_json::Value>,
+    key: &'static str,
+) -> Result<T, E>
+where
+    T: serde::de::DeserializeOwned,
+    E: serde::de::Error,
+{
+    take_optional(fields, key)?.ok_or_else(|| E::missing_field(key))
+}
+
+fn take_optional<T, E>(
+    fields: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<Option<T>, E>
+where
+    T: serde::de::DeserializeOwned,
+    E: serde::de::Error,
+{
+    fields
+        .remove(key)
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(E::custom)
+}
+
+fn entity_nbt_from_fields(
+    fields: serde_json::Map<String, serde_json::Value>,
+) -> Option<FxHashMap<String, serde_json::Value>> {
+    if fields.is_empty() {
+        None
+    } else {
+        Some(fields.into_iter().collect())
+    }
+}
+
+fn merge_entity_nbt(
+    explicit: Option<EntityNbt>,
+    flattened: Option<FxHashMap<String, serde_json::Value>>,
+) -> Option<EntityNbt> {
+    match (explicit, flattened) {
+        (None, None) => None,
+        (Some(nbt), None) => Some(nbt),
+        (None, Some(fields)) => Some(EntityNbt(fields)),
+        (Some(EntityNbt(mut explicit)), Some(flattened)) => {
+            explicit.extend(flattened);
+            Some(EntityNbt(explicit))
+        }
+    }
 }
 
 fn default_count() -> u8 {
@@ -429,6 +653,58 @@ impl BlockSpec {
 pub struct BlockCheck {
     pub pos: [i32; 3],
     pub is: BlockSpec,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EntityCheck {
+    pub entity_alias: String,
+    #[serde(default, rename = "is")]
+    pub entity_type: Option<String>,
+    #[serde(default = "default_exists")]
+    pub exists: bool,
+    #[serde(default)]
+    pub pos: Option<[f64; 3]>,
+    #[serde(default)]
+    pub position_tolerance: Option<f64>,
+    #[serde(default)]
+    pub rot: Option<[f32; 2]>,
+    #[serde(default)]
+    pub rotation_tolerance: Option<f32>,
+    #[serde(default)]
+    pub nbt: Option<EntityNbt>,
+}
+
+impl<'de> Deserialize<'de> for EntityCheck {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let mut fields = serde_json::Map::<String, serde_json::Value>::deserialize(deserializer)?;
+        let entity_alias = take_required(&mut fields, "entity_alias")?;
+        let entity_type = take_optional(&mut fields, "is")?;
+        let exists = take_optional(&mut fields, "exists")?.unwrap_or_else(default_exists);
+        let pos = take_optional(&mut fields, "pos")?;
+        let position_tolerance = take_optional(&mut fields, "position_tolerance")?;
+        let rot = take_optional(&mut fields, "rot")?;
+        let rotation_tolerance = take_optional(&mut fields, "rotation_tolerance")?;
+        let explicit_nbt = take_optional(&mut fields, "nbt")?;
+        let nbt = merge_entity_nbt(explicit_nbt, entity_nbt_from_fields(fields));
+
+        Ok(EntityCheck {
+            entity_alias,
+            entity_type,
+            exists,
+            pos,
+            position_tolerance,
+            rot,
+            rotation_tolerance,
+            nbt,
+        })
+    }
+}
+
+fn default_exists() -> bool {
+    true
 }
 
 /// Result of a two-phase test spec load
@@ -466,6 +742,7 @@ where
 pub enum AssertType {
     Block(BlockCheck),
     Inventory(InventoryCheck),
+    Entity(EntityCheck),
 }
 
 impl TestSpec {
@@ -608,22 +885,44 @@ impl TestSpec {
                 ActionType::Remove { pos } => {
                     self.validate_position(*pos, &region)?;
                 }
+                ActionType::Summon { pos, .. } => {
+                    self.validate_position(
+                        [
+                            pos[0].floor() as i32,
+                            pos[1].floor() as i32,
+                            pos[2].floor() as i32,
+                        ],
+                        &region,
+                    )?;
+                }
                 ActionType::Assert { checks } => {
                     for check in checks {
                         match check {
                             AssertType::Block(block) => {
                                 self.validate_position(block.pos, &region)?
                             }
+                            AssertType::Entity(entity) => {
+                                if let Some(pos) = entity.pos {
+                                    self.validate_position(
+                                        [
+                                            pos[0].floor() as i32,
+                                            pos[1].floor() as i32,
+                                            pos[2].floor() as i32,
+                                        ],
+                                        &region,
+                                    )?;
+                                }
+                            }
                             // Inventory checks are not validated because there are not any boundings
                             AssertType::Inventory(_) => {}
                         }
                     }
                 }
-                ActionType::UseItemOn { pos, .. } => {
-                    self.validate_position(*pos, &region)?;
-                }
-                // SetSlot and SelectHotbar don't have positions to validate
-                ActionType::SetSlot { .. } | ActionType::SelectHotbar { .. } => {}
+                // Player actions do not address a block in the cleanup region.
+                ActionType::Tp { .. }
+                | ActionType::Interact { .. }
+                | ActionType::SetSlot { .. }
+                | ActionType::SelectHotbar { .. } => {}
             }
         }
 
@@ -923,5 +1222,152 @@ mod tests {
 
         let stone = Block::new("minecraft:stone");
         assert!(!stone.is_air());
+    }
+
+    #[test]
+    fn test_tp_action_deserializes_with_optional_rotation() {
+        let action: ActionType = serde_json::from_str(
+            r#"{"do":"tp","entity_alias":"player","pos":[1.5,64,2],"rot":[0,90]}"#,
+        )
+        .unwrap();
+
+        match action {
+            ActionType::Tp {
+                entity_alias,
+                pos,
+                rot,
+            } => {
+                assert_eq!(entity_alias, "player");
+                assert_eq!(pos, [1.5, 64.0, 2.0]);
+                assert_eq!(rot, Some([0.0, 90.0]));
+            }
+            _ => panic!("expected tp action"),
+        }
+    }
+
+    #[test]
+    fn test_tp_action_requires_entity_alias() {
+        let error =
+            serde_json::from_str::<ActionType>(r#"{"do":"tp","pos":[1.5,64,2],"rot":[0,90]}"#)
+                .unwrap_err();
+        assert!(error.to_string().contains("entity_alias"));
+    }
+
+    #[test]
+    fn test_tp_action_accepts_entity_alias() {
+        let action: ActionType =
+            serde_json::from_str(r#"{"do":"tp","entity_alias":"falling","pos":[1.5,64,2]}"#)
+                .unwrap();
+
+        match action {
+            ActionType::Tp {
+                entity_alias, pos, ..
+            } => {
+                assert_eq!(entity_alias, "falling");
+                assert_eq!(pos, [1.5, 64.0, 2.0]);
+            }
+            _ => panic!("expected tp action"),
+        }
+    }
+
+    #[test]
+    fn test_interact_action_deserializes() {
+        let action: ActionType =
+            serde_json::from_str(r#"{"do":"interact","item":"minecraft:bone_meal"}"#).unwrap();
+
+        match action {
+            ActionType::Interact { item } => {
+                assert_eq!(item.as_deref(), Some("minecraft:bone_meal"));
+            }
+            _ => panic!("expected interact action"),
+        }
+    }
+
+    #[test]
+    fn test_summon_action_deserializes() {
+        let action: ActionType = serde_json::from_str(
+            r#"{"do":"summon","entity_alias":"falling","entity_type":"minecraft:falling_block","pos":[1.5,64,2],"NoGravity":"1b"}"#,
+        )
+        .unwrap();
+
+        match action {
+            ActionType::Summon {
+                entity_alias,
+                entity_type,
+                pos,
+                nbt,
+            } => {
+                assert_eq!(entity_alias, "falling");
+                assert_eq!(entity_type, "minecraft:falling_block");
+                assert_eq!(pos, [1.5, 64.0, 2.0]);
+                let nbt = nbt.expect("expected nbt");
+                assert_eq!(nbt.to_snbt(), "{NoGravity:1b}");
+            }
+            _ => panic!("expected summon action"),
+        }
+    }
+
+    #[test]
+    fn test_summon_action_rejects_raw_nbt() {
+        let error = serde_json::from_str::<ActionType>(
+            r#"{"do":"summon","entity_alias":"falling","entity_type":"minecraft:falling_block","pos":[1.5,64,2],"nbt":"{NoGravity:1b}"}"#,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("invalid type"));
+    }
+
+    #[test]
+    fn test_summon_action_accepts_nested_nbt_field() {
+        let action: ActionType = serde_json::from_str(
+            r#"{"do":"summon","entity_alias":"falling","entity_type":"minecraft:falling_block","pos":[1.5,64,2],"nbt":{"NoGravity":"1b"}}"#,
+        )
+        .unwrap();
+
+        match action {
+            ActionType::Summon { nbt, .. } => {
+                let nbt = nbt.expect("expected nbt");
+                assert_eq!(nbt.to_snbt(), "{NoGravity:1b}");
+            }
+            _ => panic!("expected summon action"),
+        }
+    }
+
+    #[test]
+    fn test_entity_assert_deserializes() {
+        let check: AssertType = serde_json::from_str(
+            r#"{"entity_alias":"falling","is":"minecraft:falling_block","pos":[1.5,64,2],"position_tolerance":0.5,"rot":[90,0],"rotation_tolerance":1,"NoGravity":"1b"}"#,
+        )
+        .unwrap();
+
+        match check {
+            AssertType::Entity(entity) => {
+                assert_eq!(entity.entity_alias, "falling");
+                assert_eq!(
+                    entity.entity_type.as_deref(),
+                    Some("minecraft:falling_block")
+                );
+                assert!(entity.exists);
+                assert_eq!(entity.pos, Some([1.5, 64.0, 2.0]));
+                assert_eq!(entity.position_tolerance, Some(0.5));
+                assert_eq!(entity.rot, Some([90.0, 0.0]));
+                assert_eq!(entity.rotation_tolerance, Some(1.0));
+                assert_eq!(
+                    entity.nbt.expect("expected nbt").to_snbt(),
+                    "{NoGravity:1b}"
+                );
+            }
+            _ => panic!("expected entity assert"),
+        }
+    }
+
+    #[test]
+    fn test_entity_assert_rejects_raw_nbt() {
+        let error = serde_json::from_str::<EntityCheck>(
+            r#"{"entity_alias":"falling","nbt":"{NoGravity:1b}"}"#,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("invalid type"));
     }
 }

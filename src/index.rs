@@ -403,6 +403,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_hash() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -428,6 +429,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_hash_ignore_not_json() {
         let temp_dir = TempDir::new().unwrap();
 

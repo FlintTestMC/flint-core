@@ -4,7 +4,10 @@
 //! to provide the actual block and player operations.
 
 use crate::Block;
-use crate::test_spec::{BlockFace, GameMode, Item, PlayerSlot};
+use crate::test_spec::{EntityNbt, GameMode, Item, PlayerSlot};
+use serde::{Deserialize, Serialize};
+use std::any::Any;
+use std::collections::HashMap;
 
 /// Position in world coordinates [x, y, z]
 pub type BlockPos = [i32; 3];
@@ -13,6 +16,15 @@ pub type BlockPos = [i32; 3];
 #[derive(Debug, Clone)]
 pub struct ServerInfo {
     pub minecraft_version: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct EntityState {
+    pub exists: bool,
+    pub entity_type: Option<String>,
+    pub pos: Option<[f64; 3]>,
+    pub rot: Option<[f32; 2]>,
+    pub nbt: HashMap<String, String>,
 }
 
 // =============================================================================
@@ -45,9 +57,27 @@ pub trait FlintWorld: Send + Sync {
     /// Set block at position (with neighbor updates)
     fn set_block(&mut self, pos: BlockPos, block: &Block);
 
+    /// Summon an entity with a stable test-local alias.
+    fn summon_entity(
+        &mut self,
+        _alias: &str,
+        _entity_type: &str,
+        _pos: [f64; 3],
+        _nbt: Option<&EntityNbt>,
+    ) {
+    }
+
+    /// Teleport an implementation-managed entity alias.
+    fn teleport_entity(&mut self, _alias: &str, _pos: [f64; 3], _rot: Option<[f32; 2]>) {}
+
+    /// Read the current entity state for a test-local alias.
+    fn get_entity(&self, _alias: &str, _requested_nbt: &[String]) -> EntityState {
+        EntityState::default()
+    }
+
     /// Create a simulated player in this world
     ///
-    /// Only called when tests use `use_item_on` or player-related actions.
+    /// Only called when tests use player-related actions.
     /// Pure block tests (place, fill, assert) don't need a player.
     fn create_player(&mut self) -> Box<dyn FlintPlayer>;
 }
@@ -59,6 +89,8 @@ pub trait FlintWorld: Send + Sync {
 /// - Select hotbar slots
 /// - Trigger item use actions
 pub trait FlintPlayer: Send + Sync {
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
     /// Set item in a slot (None = empty/clear the slot)
     fn set_slot(&mut self, slot: PlayerSlot, item: Option<&Item>);
 
@@ -71,10 +103,11 @@ pub trait FlintPlayer: Send + Sync {
     /// Get currently selected hotbar slot (1-9)
     fn selected_hotbar(&self) -> u8;
 
-    /// Use the item in the active hotbar slot on a block face
-    ///
-    /// This tests the server's actual interaction logic.
-    fn use_item_on(&mut self, pos: BlockPos, face: &BlockFace);
+    /// Teleport the player to a world position and optionally set [yaw, pitch].
+    fn teleport(&mut self, pos: [f64; 3], rot: Option<[f32; 2]>);
+
+    /// Use the item in the active hand against the current crosshair target.
+    fn interact(&mut self);
 
     /// Set the game mode of the player (creative, survival, etc.)
     fn set_game_mode(&mut self, mode: GameMode);
