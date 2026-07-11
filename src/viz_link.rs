@@ -38,10 +38,7 @@ pub struct FailurePayload {
     /// Optional relative path of the test file, for live-edit-on-disk in local dev.
     /// flint-viz tries this first; on 404 it falls back to `spec`.
     pub source_path: Option<PathBuf>,
-    /// Failing assertions from the run. Today's runner stops at the first
-    /// failure (so `len() == 1`); the type is a `Vec` so a future runner that
-    /// collects every assert at the failing tick is forward-compatible without
-    /// a schema bump.
+    /// All failing assertions collected during the run.
     pub failures: Vec<AssertFailure>,
     /// Total ticks executed before the run ended.
     pub total_ticks: u32,

@@ -12,8 +12,8 @@ pub enum ActionOutcome {
     Action,
     /// Assertion passed
     AssertPassed,
-    /// Assertion failed with details
-    AssertFailed(AssertFailure),
+    /// Assertion failed with details (may contain multiple failures)
+    AssertFailed(Vec<AssertFailure>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
