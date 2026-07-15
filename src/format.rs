@@ -32,10 +32,10 @@ pub fn print_json(results: &[TestResult], elapsed: Duration) {
         .map(|(name, detail)| {
             serde_json::json!({
                 "test": name,
-                "tick": detail.tick,
-                "expected": String::from(&detail.expected),
-                "actual": String::from(&detail.actual),
-                "position": detail.position,
+                "tick": detail.tick(),
+                "expected": String::from(detail.expected()),
+                "actual": String::from(detail.actual()),
+                "position": detail.position(),
             })
         })
         .collect();
@@ -97,11 +97,11 @@ pub fn print_tap(results: &[TestResult]) {
                 println!("  ---");
                 println!(
                     "  message: \"expected {}, got {}\"",
-                    String::from(&detail.expected),
-                    String::from(&detail.actual)
+                    String::from(detail.expected()),
+                    String::from(detail.actual())
                 );
-                println!("  at: {}", detail.position);
-                println!("  tick: {}", detail.tick);
+                println!("  at: {}", detail.position());
+                println!("  tick: {}", detail.tick());
                 println!("  ...");
             }
         }
@@ -175,10 +175,10 @@ pub fn print_junit(results: &[TestResult], elapsed: Duration) {
             if let Some(detail) = failure_map.get(result.test_name.as_str()) {
                 println!(
                     r#"      <failure message="expected {}, got {} at {} tick {}"/>"#,
-                    xml_escape(&String::from(&detail.expected)),
-                    xml_escape(&String::from(&detail.actual)),
-                    detail.position,
-                    detail.tick
+                    xml_escape(&String::from(detail.expected())),
+                    xml_escape(&String::from(detail.actual())),
+                    detail.position(),
+                    detail.tick()
                 );
             } else {
                 println!(r#"      <failure message="assertion failed"/>"#);
@@ -440,10 +440,10 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, ou
                 "{}{}└─ t{}: expected {}, got {} @ {}\n",
                 prefix,
                 detail_connector,
-                detail.tick,
-                String::from(&detail.expected),
-                String::from(&detail.actual),
-                detail.position
+                detail.tick(),
+                String::from(detail.expected()),
+                String::from(detail.actual()),
+                detail.position()
             ));
         } else {
             out.push_str(&format!("{}{}{}\n", prefix, connector, name));
@@ -491,10 +491,10 @@ fn render_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool) {
                 "{}{}└─ t{}: expected {}, got {} @ {}",
                 prefix,
                 detail_connector,
-                detail.tick,
-                String::from(&detail.expected).green(),
-                String::from(&detail.actual).red(),
-                detail.position
+                detail.tick(),
+                String::from(detail.expected()).green(),
+                String::from(detail.actual()).red(),
+                detail.position()
             );
         } else {
             println!("{}{}{}", prefix, connector, name);
