@@ -102,9 +102,18 @@ fn default_world_weather() -> String {
 
 fn default_gamerules() -> HashMap<String, GameruleValue> {
     HashMap::from([
-        ("doMobSpawning".to_string(), GameruleValue::Bool(false)),
-        ("doDaylightCycle".to_string(), GameruleValue::Bool(false)),
-        ("doWeatherCycle".to_string(), GameruleValue::Bool(false)),
+        (
+            "minecraft:spawn_mobs".to_string(),
+            GameruleValue::Bool(false),
+        ),
+        (
+            "minecraft:advance_time".to_string(),
+            GameruleValue::Bool(false),
+        ),
+        (
+            "minecraft:advance_weather".to_string(),
+            GameruleValue::Bool(false),
+        ),
     ])
 }
 
@@ -780,6 +789,12 @@ pub struct InventoryCheck {
     pub is: Option<Item>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeCheck {
+    /// Expected daytime in the range 0..=23999.
+    pub time: u64,
+}
+
 fn deserialize_item_or_none<'de, D>(deserializer: D) -> Result<Option<Item>, D::Error>
 where
     D: Deserializer<'de>,
@@ -799,6 +814,7 @@ where
 pub enum AssertType {
     Block(BlockCheck),
     Inventory(InventoryCheck),
+    Time(TimeCheck),
     Entity(EntityCheck),
 }
 
@@ -975,7 +991,7 @@ impl TestSpec {
                                 }
                             }
                             // Inventory checks are not validated because there are not any boundings
-                            AssertType::Inventory(_) => {}
+                            AssertType::Inventory(_) | AssertType::Time(_) => {}
                         }
                     }
                 }
@@ -1031,17 +1047,26 @@ mod tests {
         assert_eq!(config.time, "minecraft:day");
         assert_eq!(config.weather, "clear");
         assert_eq!(
-            config.gamerules.get("doMobSpawning"),
+            config.gamerules.get("minecraft:spawn_mobs"),
             Some(&GameruleValue::Bool(false))
         );
         assert_eq!(
-            config.gamerules.get("doDaylightCycle"),
+            config.gamerules.get("minecraft:advance_time"),
             Some(&GameruleValue::Bool(false))
         );
         assert_eq!(
-            config.gamerules.get("doWeatherCycle"),
+            config.gamerules.get("minecraft:advance_weather"),
             Some(&GameruleValue::Bool(false))
         );
+    }
+
+    #[test]
+    fn time_assert_deserializes() {
+        let check: AssertType = serde_json::from_str(r#"{"time": 42}"#).unwrap();
+        let AssertType::Time(check) = check else {
+            panic!("expected a time assertion");
+        };
+        assert_eq!(check.time, 42);
     }
 
     #[test]

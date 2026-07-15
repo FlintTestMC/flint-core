@@ -235,6 +235,22 @@ impl<A: FlintAdapter> TestRunner<A> {
                                 ));
                             }
                         }
+                        AssertType::Time(time) => {
+                            let actual = world.get_time();
+                            if actual != time.time {
+                                return ActionOutcome::AssertFailed(AssertFailure {
+                                    tick: _tick,
+                                    error_message: format!(
+                                        "Time mismatch: expected {}, got {}",
+                                        time.time, actual
+                                    ),
+                                    position: AssertPosition::from_array([0, 0, 0]),
+                                    execution_time_ms: None,
+                                    expected: InfoType::String(time.time.to_string()),
+                                    actual: InfoType::String(actual.to_string()),
+                                });
+                            }
+                        }
                         AssertType::Entity(entity) => {
                             let requested_nbt = entity
                                 .nbt
