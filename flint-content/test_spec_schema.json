@@ -107,8 +107,9 @@
         },
         "weather": {
           "type": "string",
+          "enum": ["clear", "rain", "thunder"],
           "default": "clear",
-          "description": "Value passed to Minecraft's weather command"
+          "description": "Weather state passed to Minecraft's weather command"
         },
         "gamerules": {
           "type": "object",

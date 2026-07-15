@@ -59,9 +59,27 @@ pub struct WorldConfig {
     #[serde(default = "default_world_time")]
     pub time: String,
     #[serde(default = "default_world_weather")]
-    pub weather: String,
+    pub weather: Weather,
     #[serde(default = "default_gamerules")]
     pub gamerules: HashMap<String, GameruleValue>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Weather {
+    Clear,
+    Rain,
+    Thunder,
+}
+
+impl Display for Weather {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Clear => "clear",
+            Self::Rain => "rain",
+            Self::Thunder => "thunder",
+        })
+    }
 }
 
 impl Default for WorldConfig {
@@ -96,8 +114,8 @@ fn default_world_time() -> String {
     "minecraft:day".to_string()
 }
 
-fn default_world_weather() -> String {
-    "clear".to_string()
+fn default_world_weather() -> Weather {
+    Weather::Clear
 }
 
 fn default_gamerules() -> HashMap<String, GameruleValue> {
@@ -1045,7 +1063,7 @@ mod tests {
     fn world_config_defaults_are_deterministic() {
         let config = WorldConfig::default();
         assert_eq!(config.time, "minecraft:day");
-        assert_eq!(config.weather, "clear");
+        assert_eq!(config.weather, Weather::Clear);
         assert_eq!(
             config.gamerules.get("minecraft:spawn_mobs"),
             Some(&GameruleValue::Bool(false))
@@ -1058,6 +1076,20 @@ mod tests {
             config.gamerules.get("minecraft:advance_weather"),
             Some(&GameruleValue::Bool(false))
         );
+    }
+
+    #[test]
+    fn world_weather_deserializes_from_supported_command_values() {
+        for (value, expected) in [
+            ("clear", Weather::Clear),
+            ("rain", Weather::Rain),
+            ("thunder", Weather::Thunder),
+        ] {
+            let config: WorldConfig =
+                serde_json::from_str(&format!(r#"{{"weather":"{value}"}}"#)).unwrap();
+            assert_eq!(config.weather, expected);
+            assert_eq!(config.weather.to_string(), value);
+        }
     }
 
     #[test]
