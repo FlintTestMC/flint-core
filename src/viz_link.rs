@@ -108,18 +108,15 @@ pub fn failure_url(payload: &FailurePayload, base: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::results::{AssertPosition, InfoType};
     use crate::test_spec::Block;
 
     fn sample_failure() -> AssertFailure {
-        AssertFailure {
-            tick: 7,
-            error_message: "expected stone, got air".to_string(),
-            position: AssertPosition::from_array([1, 2, 3]),
-            execution_time_ms: Some(2),
-            expected: InfoType::Block(Block::new("minecraft:stone")),
-            actual: InfoType::Block(Block::new("minecraft:air")),
-        }
+        AssertFailure::new_block(
+            7,
+            vec![Block::new("minecraft:stone")],
+            Block::new("minecraft:air"),
+            [1, 2, 3],
+        )
     }
 
     fn sample_payload() -> FailurePayload {
@@ -149,7 +146,7 @@ mod tests {
         assert_eq!(decoded.version, PAYLOAD_VERSION);
         assert_eq!(decoded.spec.name, "round-trip");
         assert_eq!(decoded.failures.len(), 1);
-        assert_eq!(decoded.failures[0].tick, 7);
+        assert_eq!(decoded.failures[0].tick(), 7);
         assert_eq!(decoded.total_ticks, 42);
         assert_eq!(
             decoded.source_path.as_deref(),

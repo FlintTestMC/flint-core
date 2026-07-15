@@ -3,8 +3,8 @@
 //! The `TestRunner` loads tests and executes them against a server adapter.
 
 use crate::results::{
-    ActionOutcome, AssertEntityFail, AssertFailure, AssertPosition, AssertionResult, InfoType,
-    TestResult, TestSummary,
+    ActionOutcome, AssertEntityFail, AssertFailure, AssertTimeFail, AssertionResult, TestResult,
+    TestSummary,
 };
 use crate::test_spec::{ActionType, AssertType, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
@@ -199,24 +199,12 @@ impl<A: FlintAdapter> TestRunner<A> {
                                 .iter()
                                 .any(|expected| block_matches(&actual, expected))
                             {
-                                let expected_str = expected_blocks
-                                    .iter()
-                                    .map(|b| b.to_command())
-                                    .collect::<Vec<_>>()
-                                    .join(" or ");
-                                return ActionOutcome::AssertFailed(AssertFailure {
-                                    tick: _tick,
-                                    error_message: format!(
-                                        "Block mismatch at {:?}: expected '{}', got '{}'",
-                                        pos,
-                                        expected_str,
-                                        actual.to_command(),
-                                    ),
-                                    position: AssertPosition::from_array(pos),
-                                    execution_time_ms: None,
-                                    expected: InfoType::Blocks(expected_blocks),
-                                    actual: InfoType::Block(actual),
-                                });
+                                return ActionOutcome::AssertFailed(AssertFailure::new_block(
+                                    _tick,
+                                    expected_blocks,
+                                    actual,
+                                    pos,
+                                ));
                             }
                         }
                         AssertType::Inventory(inv) => {
@@ -233,6 +221,14 @@ impl<A: FlintAdapter> TestRunner<A> {
                                 return ActionOutcome::AssertFailed(AssertFailure::new_item(
                                     _tick, &expected, &actual, inv.slot,
                                 ));
+                            }
+                        }
+                        AssertType::Time(time) => {
+                            let actual = world.get_time();
+                            if actual != time.time {
+                                return ActionOutcome::AssertFailed(
+                                    AssertTimeFail::new(_tick, time.time, actual).into(),
+                                );
                             }
                         }
                         AssertType::Entity(entity) => {

@@ -89,6 +89,43 @@
         "player": {
           "$ref": "#/$defs/PlayerConfig",
           "description": "Player configuration for initial inventory and hotbar"
+        },
+        "world": {
+          "$ref": "#/$defs/WorldConfig",
+          "description": "World time, weather, and gamerules shared by compatible parallel tests"
+        }
+      },
+      "additionalProperties": false
+    },
+    "WorldConfig": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "string",
+          "default": "minecraft:day",
+          "description": "Value passed to Minecraft's time set command"
+        },
+        "weather": {
+          "type": "string",
+          "enum": ["clear", "rain", "thunder"],
+          "default": "clear",
+          "description": "Weather state passed to Minecraft's weather command"
+        },
+        "gamerules": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "boolean" },
+              { "type": "integer" },
+              { "type": "string" }
+            ]
+          },
+          "default": {
+            "minecraft:spawn_mobs": false,
+            "minecraft:advance_time": false,
+            "minecraft:advance_weather": false
+          },
+          "description": "Gamerule names and values applied before the test batch"
         }
       },
       "additionalProperties": false
@@ -271,6 +308,19 @@
             }
           ],
           "description": "Expected block(s) at the position — a single block or an array of blocks (any match passes)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TimeCheck": {
+      "type": "object",
+      "required": ["time"],
+      "properties": {
+        "time": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 23999,
+          "description": "Expected position in the minecraft:day timeline"
         }
       },
       "additionalProperties": false
@@ -467,6 +517,7 @@
                   "oneOf": [
                     { "$ref": "#/$defs/BlockCheck" },
                     { "$ref": "#/$defs/InventoryCheck" },
+                    { "$ref": "#/$defs/TimeCheck" },
                     { "$ref": "#/$defs/EntityCheck" }
                   ]
                 },

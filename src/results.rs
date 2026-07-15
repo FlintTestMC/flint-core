@@ -74,19 +74,27 @@ pub enum AssertionResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AssertFailure {
-    /// The tick at which this assertion was executed
+pub enum AssertFailure {
+    Block(AssertBlockFail),
+    Inventory(AssertInventoryFail),
+    Time(AssertTimeFail),
+    Entity(Box<AssertEntityFail>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssertBlockFail {
     pub tick: u32,
-    /// Error message if the assertion failed
-    pub error_message: String,
-    /// Position involved in the assertion, if applicable
-    pub position: AssertPosition,
-    /// Time taken to execute this assertion in milliseconds
-    pub execution_time_ms: Option<u64>,
-    /// What as expected
-    pub expected: InfoType,
-    /// What was found
-    pub actual: InfoType,
+    pub expected: Vec<Block>,
+    pub actual: Block,
+    pub position: [i32; 3],
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssertInventoryFail {
+    pub tick: u32,
+    pub expected: Option<Item>,
+    pub actual: Option<Item>,
+    pub slot: PlayerSlot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,28 +116,30 @@ impl AssertEntityFail {
 
 impl From<AssertEntityFail> for AssertFailure {
     fn from(failure: AssertEntityFail) -> Self {
-        let position = failure
-            .expected
-            .pos
-            .map(|pos| {
-                [
-                    pos[0].floor() as i32,
-                    pos[1].floor() as i32,
-                    pos[2].floor() as i32,
-                ]
-            })
-            .unwrap_or([0, 0, 0]);
+        Self::Entity(Box::new(failure))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct AssertTimeFail {
+    pub tick: u32,
+    pub expected: u64,
+    pub actual: u64,
+}
+
+impl AssertTimeFail {
+    pub fn new(tick: u32, expected: u64, actual: u64) -> Self {
         Self {
-            tick: failure.tick,
-            error_message: format!(
-                "Entity mismatch for alias '{}'",
-                failure.expected.entity_alias
-            ),
-            position: AssertPosition::from_array(position),
-            execution_time_ms: None,
-            expected: InfoType::EntityCheck(Box::new(failure.expected)),
-            actual: InfoType::EntityState(Box::new(failure.actual)),
+            tick,
+            expected,
+            actual,
         }
+    }
+}
+
+impl From<AssertTimeFail> for AssertFailure {
+    fn from(failure: AssertTimeFail) -> Self {
+        Self::Time(failure)
     }
 }
 
@@ -161,67 +171,107 @@ impl Display for AssertPosition {
 }
 
 impl AssertFailure {
-    /// Create a failed assertion result
-    pub fn new(
-        tick: u32,
-        error: impl Into<String>,
-        position: [i32; 3],
-        expected: InfoType,
-        actual: InfoType,
-    ) -> AssertFailure {
-        Self {
+    pub fn new_item(tick: u32, expected: &Item, actual: &Item, slot: PlayerSlot) -> AssertFailure {
+        Self::Inventory(AssertInventoryFail {
             tick,
-            error_message: error.into(),
-            position: AssertPosition::from_array(position),
-            execution_time_ms: None,
+            expected: Some(expected.clone()),
+            actual: Some(actual.clone()),
+            slot,
+        })
+    }
+
+    pub fn new_block(tick: u32, expected: Vec<Block>, actual: Block, position: [i32; 3]) -> Self {
+        Self::Block(AssertBlockFail {
+            tick,
             expected,
             actual,
-        }
+            position,
+        })
     }
 
-    pub fn new_slot(tick: u32, expected: PlayerSlot, actual: PlayerSlot) -> AssertFailure {
-        Self {
+    pub fn new_inventory(
+        tick: u32,
+        expected: Option<Item>,
+        actual: Option<Item>,
+        slot: PlayerSlot,
+    ) -> Self {
+        Self::Inventory(AssertInventoryFail {
             tick,
-            error_message: format!("Item slot does not exist: {:?}", expected),
-            position: AssertPosition::Slot { slot: expected },
-            execution_time_ms: None,
-            expected: InfoType::Slot(expected),
-            actual: InfoType::Slot(actual),
-        }
+            expected,
+            actual,
+            slot,
+        })
     }
-    pub fn new_item(tick: u32, expected: &Item, actual: &Item, slot: PlayerSlot) -> AssertFailure {
-        Self {
-            tick,
-            error_message: format!("Item slot does not exist: {:?}", expected),
-            position: AssertPosition::Slot { slot },
-            execution_time_ms: None,
-            expected: InfoType::Item(expected.clone()),
-            actual: InfoType::Item(actual.clone()),
+
+    pub fn tick(&self) -> u32 {
+        match self {
+            Self::Block(failure) => failure.tick,
+            Self::Inventory(failure) => failure.tick,
+            Self::Time(failure) => failure.tick,
+            Self::Entity(failure) => failure.tick,
         }
     }
 
-    /// Add position information to the assertion result
-    pub fn with_position_coordinate(mut self, pos: [i32; 3]) -> Self {
-        self.position = AssertPosition::from_array(pos);
-        self
+    pub fn expected(&self) -> InfoType {
+        match self {
+            Self::Block(failure) => InfoType::Blocks(failure.expected.clone()),
+            Self::Inventory(failure) => failure
+                .expected
+                .clone()
+                .map(InfoType::Item)
+                .unwrap_or_else(|| InfoType::String("empty".to_string())),
+            Self::Time(failure) => InfoType::String(failure.expected.to_string()),
+            Self::Entity(failure) => InfoType::EntityCheck(Box::new(failure.expected.clone())),
+        }
     }
 
-    /// Add position information to the assertion result
-    pub fn with_position_slot(mut self, slot: &PlayerSlot) -> Self {
-        self.position = AssertPosition::from_slot(*slot);
-        self
+    pub fn actual(&self) -> InfoType {
+        match self {
+            Self::Block(failure) => InfoType::Block(failure.actual.clone()),
+            Self::Inventory(failure) => failure
+                .actual
+                .clone()
+                .map(InfoType::Item)
+                .unwrap_or_else(|| InfoType::String("empty".to_string())),
+            Self::Time(failure) => InfoType::String(failure.actual.to_string()),
+            Self::Entity(failure) => InfoType::EntityState(Box::new(failure.actual.clone())),
+        }
     }
 
-    /// Add execution timing information
-    pub fn with_timing(mut self, ms: u64) -> Self {
-        self.execution_time_ms = Some(ms);
-        self
+    pub fn position(&self) -> AssertPosition {
+        match self {
+            Self::Block(failure) => AssertPosition::from_array(failure.position),
+            Self::Inventory(failure) => AssertPosition::from_slot(failure.slot),
+            Self::Time(_) => AssertPosition::from_array([0, 0, 0]),
+            Self::Entity(failure) => AssertPosition::from_array(
+                failure
+                    .expected
+                    .pos
+                    .map(|pos| {
+                        [
+                            pos[0].floor() as i32,
+                            pos[1].floor() as i32,
+                            pos[2].floor() as i32,
+                        ]
+                    })
+                    .unwrap_or([0, 0, 0]),
+            ),
+        }
     }
-    /// adds the expected and the actual found data
-    pub fn with_expected_actual(mut self, expected: InfoType, actual: InfoType) -> Self {
-        self.actual = actual;
-        self.expected = expected;
-        self
+
+    pub fn error_message(&self) -> String {
+        match self {
+            Self::Block(_) => "Block was different".to_string(),
+            Self::Inventory(_) => "Inventory slot content was different".to_string(),
+            Self::Time(failure) => format!(
+                "Time mismatch: expected {}, got {}",
+                failure.expected, failure.actual
+            ),
+            Self::Entity(failure) => format!(
+                "Entity mismatch for alias '{}'",
+                failure.expected.entity_alias
+            ),
+        }
     }
 }
 
@@ -467,13 +517,12 @@ mod tests {
         AssertionResult::Success(tick)
     }
 
-    fn make_failure(tick: u32, error: &str, position: [i32; 3]) -> AssertionResult {
-        Failure(AssertFailure::new(
+    fn make_failure(tick: u32, position: [i32; 3]) -> AssertionResult {
+        Failure(AssertFailure::new_block(
             tick,
-            error,
+            vec![Block::new("minecraft:stone")],
+            Block::new("minecraft:air"),
             position,
-            InfoType::String("expected".to_string()),
-            InfoType::String("actual".to_string()),
         ))
     }
 
@@ -485,15 +534,48 @@ mod tests {
 
     #[test]
     fn test_assertion_result_failure() {
-        let result = make_failure(10, "Block mismatch", [5, 6, 7]);
+        let result = make_failure(10, [5, 6, 7]);
 
         if let Failure(f) = result {
-            assert_eq!(f.tick, 10);
-            assert_eq!(f.error_message, "Block mismatch");
-            assert_eq!(f.position, AssertPosition::from_array([5, 6, 7]));
+            assert_eq!(f.tick(), 10);
+            assert_eq!(f.error_message(), "Block was different");
+            assert_eq!(f.position(), AssertPosition::from_array([5, 6, 7]));
         } else {
             panic!("Expected Failure variant");
         }
+    }
+
+    #[test]
+    fn time_failure_uses_typed_variant() {
+        let failure: AssertFailure = AssertTimeFail::new(12, 1_000, 1_001).into();
+
+        assert!(matches!(failure, AssertFailure::Time(_)));
+        assert_eq!(failure.tick(), 12);
+        assert_eq!(
+            failure.error_message(),
+            "Time mismatch: expected 1000, got 1001"
+        );
+        assert_eq!(failure.position(), AssertPosition::from_array([0, 0, 0]));
+        assert_eq!(failure.expected().get_string().as_deref(), Some("1000"));
+        assert_eq!(failure.actual().get_string().as_deref(), Some("1001"));
+    }
+
+    #[test]
+    fn block_failure_uses_typed_variant() {
+        let failure = AssertFailure::new_block(
+            3,
+            vec![Block::new("minecraft:stone")],
+            Block::new("minecraft:air"),
+            [4, 5, 6],
+        );
+
+        let AssertFailure::Block(block) = failure else {
+            panic!("expected block failure variant");
+        };
+        assert_eq!(block.tick, 3);
+        assert_eq!(block.position, [4, 5, 6]);
+        assert_eq!(block.expected[0].id, "minecraft:stone");
+        assert_eq!(block.actual.id, "minecraft:air");
     }
 
     #[test]
@@ -518,7 +600,7 @@ mod tests {
         let mut result = TestResult::new("test2");
 
         result.add_assertion(make_success(5));
-        result.add_assertion(make_failure(10, "Expected stone, got dirt", [0, 0, 0]));
+        result.add_assertion(make_failure(10, [0, 0, 0]));
         result.add_assertion(make_success(15));
 
         assert!(!result.success);
@@ -531,7 +613,7 @@ mod tests {
     fn test_test_summary() {
         let result1 = TestResult::new("test1").with_execution_time(1000);
         let mut result2 = TestResult::new("test2").with_execution_time(2000);
-        result2.add_assertion(make_failure(5, "Failed", [0, 0, 0]));
+        result2.add_assertion(make_failure(5, [0, 0, 0]));
 
         let summary = TestSummary::from_results(vec![result1, result2]);
 

@@ -51,6 +51,9 @@ pub trait FlintWorld: Send + Sync {
     /// Get current tick count
     fn current_tick(&self) -> u64;
 
+    /// Query the world's current daytime (0..=23999).
+    fn get_time(&self) -> u64;
+
     /// Get block at position
     fn get_block(&self, pos: BlockPos) -> Block;
 
