@@ -115,6 +115,7 @@ mod tests {
             setup: Some(SetupSpec {
                 cleanup: Some(CleanupSpec { region }),
                 player: None,
+                world: Default::default(),
             }),
             timeline: vec![],
             breakpoints: vec![],

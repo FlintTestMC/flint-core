@@ -89,6 +89,42 @@
         "player": {
           "$ref": "#/$defs/PlayerConfig",
           "description": "Player configuration for initial inventory and hotbar"
+        },
+        "world": {
+          "$ref": "#/$defs/WorldConfig",
+          "description": "World time, weather, and gamerules shared by compatible parallel tests"
+        }
+      },
+      "additionalProperties": false
+    },
+    "WorldConfig": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "string",
+          "default": "minecraft:day",
+          "description": "Value passed to Minecraft's time set command"
+        },
+        "weather": {
+          "type": "string",
+          "default": "clear",
+          "description": "Value passed to Minecraft's weather command"
+        },
+        "gamerules": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "boolean" },
+              { "type": "integer" },
+              { "type": "string" }
+            ]
+          },
+          "default": {
+            "doMobSpawning": false,
+            "doDaylightCycle": false,
+            "doWeatherCycle": false
+          },
+          "description": "Gamerule names and values applied before the test batch"
         }
       },
       "additionalProperties": false

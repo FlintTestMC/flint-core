@@ -141,6 +141,7 @@ mod tests {
                     region: [[0, 0, 0], [1, 1, 1]],
                 }),
                 player: None,
+                world: Default::default(),
             }),
             timeline,
             breakpoints: vec![],

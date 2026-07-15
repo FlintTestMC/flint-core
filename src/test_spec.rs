@@ -49,6 +49,63 @@ pub struct SetupSpec {
     pub cleanup: Option<CleanupSpec>,
     #[serde(default)]
     pub player: Option<PlayerConfig>,
+    #[serde(default)]
+    pub world: WorldConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldConfig {
+    #[serde(default = "default_world_time")]
+    pub time: String,
+    #[serde(default = "default_world_weather")]
+    pub weather: String,
+    #[serde(default = "default_gamerules")]
+    pub gamerules: HashMap<String, GameruleValue>,
+}
+
+impl Default for WorldConfig {
+    fn default() -> Self {
+        Self {
+            time: default_world_time(),
+            weather: default_world_weather(),
+            gamerules: default_gamerules(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GameruleValue {
+    Bool(bool),
+    Integer(i64),
+    String(String),
+}
+
+impl Display for GameruleValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bool(value) => Display::fmt(value, f),
+            Self::Integer(value) => Display::fmt(value, f),
+            Self::String(value) => f.write_str(value),
+        }
+    }
+}
+
+fn default_world_time() -> String {
+    "minecraft:day".to_string()
+}
+
+fn default_world_weather() -> String {
+    "clear".to_string()
+}
+
+fn default_gamerules() -> HashMap<String, GameruleValue> {
+    HashMap::from([
+        ("doMobSpawning".to_string(), GameruleValue::Bool(false)),
+        ("doDaylightCycle".to_string(), GameruleValue::Bool(false)),
+        ("doWeatherCycle".to_string(), GameruleValue::Bool(false)),
+    ])
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -794,6 +851,10 @@ impl TestSpec {
             .unwrap_or(0)
     }
 
+    pub fn world_config(&self) -> &WorldConfig {
+        &self.setup.as_ref().expect("setup is missing").world
+    }
+
     pub fn cleanup_region(&self) -> [[i32; 3]; 2] {
         self.setup
             .as_ref()
@@ -963,6 +1024,25 @@ impl TestSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn world_config_defaults_are_deterministic() {
+        let config = WorldConfig::default();
+        assert_eq!(config.time, "minecraft:day");
+        assert_eq!(config.weather, "clear");
+        assert_eq!(
+            config.gamerules.get("doMobSpawning"),
+            Some(&GameruleValue::Bool(false))
+        );
+        assert_eq!(
+            config.gamerules.get("doDaylightCycle"),
+            Some(&GameruleValue::Bool(false))
+        );
+        assert_eq!(
+            config.gamerules.get("doWeatherCycle"),
+            Some(&GameruleValue::Bool(false))
+        );
+    }
 
     #[test]
     fn redstone_lever_with_two_properties_command_string() {
