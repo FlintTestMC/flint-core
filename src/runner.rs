@@ -6,7 +6,7 @@ use crate::results::{
     ActionOutcome, AssertEntityFail, AssertFailure, AssertTimeFail, AssertionResult, TestResult,
     TestSummary,
 };
-use crate::test_spec::{ActionType, AssertType, Item, PlayerSlot};
+use crate::test_spec::{ActionType, AssertType, EntityCheck, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{EntityState, FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
@@ -371,7 +371,7 @@ fn item_matches(actual: &Item, expected: &Item) -> bool {
     true
 }
 
-pub fn entity_matches(actual: &[EntityState], expected: &crate::test_spec::EntityCheck) -> bool {
+pub fn entity_matches(actual: &[EntityState], expected: &EntityCheck) -> bool {
     if !expected.exists {
         return actual.is_empty();
     }
