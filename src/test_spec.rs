@@ -424,7 +424,7 @@ fn json_value_to_string(value: &serde_json::Value) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EntityNbt(FxHashMap<String, serde_json::Value>);
 
@@ -739,13 +739,16 @@ pub struct BlockCheck {
     pub is: BlockSpec,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityCheck {
-    pub entity_alias: String,
+    #[serde(default)]
+    pub entity_alias: Option<String>,
     #[serde(default, rename = "is")]
     pub entity_type: Option<String>,
     #[serde(default = "default_exists")]
     pub exists: bool,
+    #[serde(default)]
+    pub count: Option<usize>,
     #[serde(default)]
     pub pos: Option<[f64; 3]>,
     #[serde(default)]
@@ -754,37 +757,8 @@ pub struct EntityCheck {
     pub rot: Option<[f32; 2]>,
     #[serde(default)]
     pub rotation_tolerance: Option<f32>,
-    #[serde(default)]
-    pub nbt: Option<EntityNbt>,
-}
-
-impl<'de> Deserialize<'de> for EntityCheck {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let mut fields = serde_json::Map::<String, serde_json::Value>::deserialize(deserializer)?;
-        let entity_alias = take_required(&mut fields, "entity_alias")?;
-        let entity_type = take_optional(&mut fields, "is")?;
-        let exists = take_optional(&mut fields, "exists")?.unwrap_or_else(default_exists);
-        let pos = take_optional(&mut fields, "pos")?;
-        let position_tolerance = take_optional(&mut fields, "position_tolerance")?;
-        let rot = take_optional(&mut fields, "rot")?;
-        let rotation_tolerance = take_optional(&mut fields, "rotation_tolerance")?;
-        let explicit_nbt = take_optional(&mut fields, "nbt")?;
-        let nbt = merge_entity_nbt(explicit_nbt, entity_nbt_from_fields(fields));
-
-        Ok(EntityCheck {
-            entity_alias,
-            entity_type,
-            exists,
-            pos,
-            position_tolerance,
-            rot,
-            rotation_tolerance,
-            nbt,
-        })
-    }
+    #[serde(default, flatten)]
+    pub nbt: EntityNbt,
 }
 
 fn default_exists() -> bool {
@@ -997,6 +971,12 @@ impl TestSpec {
                                 self.validate_position(block.pos, &region)?
                             }
                             AssertType::Entity(entity) => {
+                                if entity.entity_alias.is_none() && entity.entity_type.is_none() {
+                                    anyhow::bail!(
+                                        "Test '{}': entity assertion requires either 'entity_alias' or 'is'",
+                                        self.name
+                                    );
+                                }
                                 if let Some(pos) = entity.pos {
                                     self.validate_position(
                                         [
@@ -1479,7 +1459,7 @@ mod tests {
 
         match check {
             AssertType::Entity(entity) => {
-                assert_eq!(entity.entity_alias, "falling");
+                assert_eq!(entity.entity_alias.as_deref(), Some("falling"));
                 assert_eq!(
                     entity.entity_type.as_deref(),
                     Some("minecraft:falling_block")
@@ -1489,22 +1469,49 @@ mod tests {
                 assert_eq!(entity.position_tolerance, Some(0.5));
                 assert_eq!(entity.rot, Some([90.0, 0.0]));
                 assert_eq!(entity.rotation_tolerance, Some(1.0));
-                assert_eq!(
-                    entity.nbt.expect("expected nbt").to_snbt(),
-                    "{NoGravity:1b}"
-                );
+                assert_eq!(entity.nbt.to_snbt(), "{NoGravity:1b}");
             }
             _ => panic!("expected entity assert"),
         }
     }
 
     #[test]
-    fn test_entity_assert_rejects_raw_nbt() {
-        let error = serde_json::from_str::<EntityCheck>(
-            r#"{"entity_alias":"falling","nbt":"{NoGravity:1b}"}"#,
-        )
-        .unwrap_err();
+    fn entity_assert_accepts_type_without_alias_for_spawn_checks() {
+        let check: EntityCheck =
+            serde_json::from_str(r#"{"is":"minecraft:snowball","exists":true,"count":1}"#).unwrap();
 
-        assert!(error.to_string().contains("invalid type"));
+        assert_eq!(check.entity_alias, None);
+        assert_eq!(check.entity_type.as_deref(), Some("minecraft:snowball"));
+        assert!(check.exists);
+        assert_eq!(check.count, Some(1));
+    }
+
+    #[test]
+    fn validation_rejects_entity_assert_without_alias_or_type() {
+        let spec: TestSpec = serde_json::from_str(
+            r#"{
+                "name":"Invalid entity assertion",
+                "setup":{"cleanup":{"region":[[0,0,0],[0,0,0]]}},
+                "timeline":[{"at":0,"do":"assert","checks":[{"exists":true}]}]
+            }"#,
+        )
+        .unwrap();
+
+        let error = spec.validate(false).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("entity assertion requires either 'entity_alias' or 'is'")
+        );
+    }
+
+    #[test]
+    fn entity_assert_treats_every_extra_field_as_flat_nbt() {
+        let check = serde_json::from_str::<EntityCheck>(
+            r#"{"entity_alias":"falling","custom_field":"value"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(check.nbt.to_snbt(), r#"{custom_field:"value"}"#);
     }
 }

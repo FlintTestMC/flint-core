@@ -20,7 +20,6 @@ pub struct ServerInfo {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EntityState {
-    pub exists: bool,
     pub entity_type: Option<String>,
     pub pos: Option<[f64; 3]>,
     pub rot: Option<[f32; 2]>,
@@ -74,8 +73,13 @@ pub trait FlintWorld: Send + Sync {
     fn teleport_entity(&mut self, _alias: &str, _pos: [f64; 3], _rot: Option<[f32; 2]>) {}
 
     /// Read the current entity state for a test-local alias.
-    fn get_entity(&self, _alias: &str, _requested_nbt: &[String]) -> EntityState {
-        EntityState::default()
+    fn get_entity(&self, _alias: &str, _requested_nbt: &[String]) -> Vec<EntityState> {
+        Vec::new()
+    }
+
+    /// Find an entity created naturally by gameplay using its entity type.
+    fn find_entity(&self, _entity_type: &str, _requested_nbt: &[String]) -> Vec<EntityState> {
+        Vec::new()
     }
 
     /// Create a simulated player in this world

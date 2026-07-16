@@ -327,7 +327,10 @@
     },
     "EntityCheck": {
       "type": "object",
-      "required": ["entity_alias"],
+      "anyOf": [
+        { "required": ["entity_alias"] },
+        { "required": ["is"] }
+      ],
       "properties": {
         "entity_alias": {
           "type": "string",
@@ -341,6 +344,11 @@
           "type": "boolean",
           "default": true,
           "description": "Whether the entity is expected to exist"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional exact number of matching entities"
         },
         "pos": {
           "$ref": "#/$defs/NumericCoordinate",
@@ -362,11 +370,6 @@
           "type": "number",
           "minimum": 0,
           "description": "Allowed absolute delta for each rotation component"
-        },
-        "nbt": {
-          "type": "object",
-          "additionalProperties": true,
-          "description": "Optional expected entity NBT fields. Object keys are queried as data paths, e.g. Item.id."
         }
       },
       "additionalProperties": true

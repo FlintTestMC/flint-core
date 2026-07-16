@@ -24,7 +24,7 @@ pub enum InfoType {
     Item(Item),
     Slot(PlayerSlot),
     EntityCheck(Box<EntityCheck>),
-    EntityState(Box<EntityState>),
+    EntityState(Box<Vec<EntityState>>),
 }
 
 impl InfoType {
@@ -101,15 +101,15 @@ pub struct AssertInventoryFail {
 pub struct AssertEntityFail {
     pub tick: u32,
     pub expected: EntityCheck,
-    pub actual: EntityState,
+    pub actual: Vec<EntityState>,
 }
 
 impl AssertEntityFail {
-    pub fn new(tick: u32, expected: &EntityCheck, actual: &EntityState) -> Self {
+    pub fn new(tick: u32, expected: &EntityCheck, actual: &[EntityState]) -> Self {
         Self {
             tick,
             expected: expected.clone(),
-            actual: actual.clone(),
+            actual: actual.to_vec(),
         }
     }
 }
@@ -268,8 +268,13 @@ impl AssertFailure {
                 failure.expected, failure.actual
             ),
             Self::Entity(failure) => format!(
-                "Entity mismatch for alias '{}'",
-                failure.expected.entity_alias
+                "Entity mismatch for {}",
+                failure
+                    .expected
+                    .entity_alias
+                    .as_deref()
+                    .or(failure.expected.entity_type.as_deref())
+                    .unwrap_or("unknown entity")
             ),
         }
     }
