@@ -6,7 +6,7 @@ use crate::results::{
     ActionOutcome, AssertEntityFail, AssertFailure, AssertTimeFail, AssertionResult, TestResult,
     TestSummary,
 };
-use crate::test_spec::{ActionType, AssertType, Item, PlayerSlot};
+use crate::test_spec::{ActionType, AssertType, EntityCheck, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{EntityState, FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
@@ -232,12 +232,18 @@ impl<A: FlintAdapter> TestRunner<A> {
                             }
                         }
                         AssertType::Entity(entity) => {
-                            let requested_nbt = entity
-                                .nbt
-                                .as_ref()
-                                .map(|nbt| nbt.requested_paths())
-                                .unwrap_or_default();
-                            let actual = world.get_entity(&entity.entity_alias, &requested_nbt);
+                            let requested_nbt = entity.nbt.requested_paths();
+                            let actual = if let Some(alias) = entity.entity_alias.as_deref() {
+                                world.get_entity(alias, &requested_nbt)
+                            } else {
+                                world.find_entity(
+                                    entity
+                                        .entity_type
+                                        .as_deref()
+                                        .expect("entity check requires an alias or entity type"),
+                                    &requested_nbt,
+                                )
+                            };
                             if !entity_matches(&actual, entity) {
                                 return ActionOutcome::AssertFailed(
                                     AssertEntityFail::new(_tick, entity, &actual).into(),
@@ -365,47 +371,52 @@ fn item_matches(actual: &Item, expected: &Item) -> bool {
     true
 }
 
-pub fn entity_matches(actual: &EntityState, expected: &crate::test_spec::EntityCheck) -> bool {
-    if actual.exists != expected.exists {
-        return false;
-    }
+pub fn entity_matches(actual: &[EntityState], expected: &EntityCheck) -> bool {
     if !expected.exists {
-        return true;
+        return actual.is_empty();
     }
-    if let Some(expected_type) = expected.entity_type.as_deref()
-        && actual.entity_type.as_deref() != Some(expected_type)
+    if let Some(expected_count) = expected.count
+        && actual.len() != expected_count
     {
         return false;
     }
-    if let Some(expected_pos) = expected.pos {
-        let Some(actual_pos) = actual.pos else {
-            return false;
-        };
-        let position_tolerance = expected.position_tolerance.unwrap_or(0.25);
-        let distance = actual_pos
-            .into_iter()
-            .zip(expected_pos)
-            .map(|(actual, expected)| (actual - expected).powi(2))
-            .sum::<f64>()
-            .sqrt();
-        if distance > position_tolerance {
+    if actual.is_empty() {
+        return false;
+    }
+    actual.iter().all(|actual| {
+        if let Some(expected_type) = expected.entity_type.as_deref()
+            && actual.entity_type.as_deref() != Some(expected_type)
+        {
             return false;
         }
-    }
-    if let Some(expected_rot) = expected.rot {
-        let Some(actual_rot) = actual.rot else {
-            return false;
-        };
-        let rotation_tolerance = expected.rotation_tolerance.unwrap_or(0.5);
-        let yaw_delta = (actual_rot[0] - expected_rot[0]).rem_euclid(360.0);
-        let yaw_delta = yaw_delta.min(360.0 - yaw_delta);
-        let pitch_delta = (actual_rot[1] - expected_rot[1]).abs();
-        if yaw_delta > rotation_tolerance || pitch_delta > rotation_tolerance {
-            return false;
+        if let Some(expected_pos) = expected.pos {
+            let Some(actual_pos) = actual.pos else {
+                return false;
+            };
+            let position_tolerance = expected.position_tolerance.unwrap_or(0.25);
+            let distance = actual_pos
+                .into_iter()
+                .zip(expected_pos)
+                .map(|(actual, expected)| (actual - expected).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            if distance > position_tolerance {
+                return false;
+            }
         }
-    }
-    if let Some(expected_nbt) = expected.nbt.as_ref() {
-        for (key, expected) in expected_nbt.expected_values() {
+        if let Some(expected_rot) = expected.rot {
+            let Some(actual_rot) = actual.rot else {
+                return false;
+            };
+            let rotation_tolerance = expected.rotation_tolerance.unwrap_or(0.5);
+            let yaw_delta = (actual_rot[0] - expected_rot[0]).rem_euclid(360.0);
+            let yaw_delta = yaw_delta.min(360.0 - yaw_delta);
+            let pitch_delta = (actual_rot[1] - expected_rot[1]).abs();
+            if yaw_delta > rotation_tolerance || pitch_delta > rotation_tolerance {
+                return false;
+            }
+        }
+        for (key, expected) in expected.nbt.expected_values() {
             let Some(actual) = actual.nbt.get(&key) else {
                 return false;
             };
@@ -413,8 +424,8 @@ pub fn entity_matches(actual: &EntityState, expected: &crate::test_spec::EntityC
                 return false;
             }
         }
-    }
-    true
+        true
+    })
 }
 
 fn normalize_entity_nbt_value(value: &str) -> String {
@@ -428,28 +439,61 @@ mod entity_match_tests {
 
     fn check_with_rotation(rot: [f32; 2], tolerance: f32) -> EntityCheck {
         EntityCheck {
-            entity_alias: "entity".to_string(),
+            entity_alias: Some("entity".to_string()),
             entity_type: None,
             exists: true,
+            count: None,
             pos: None,
             position_tolerance: None,
             rot: Some(rot),
             rotation_tolerance: Some(tolerance),
-            nbt: None,
+            nbt: Default::default(),
         }
     }
 
     #[test]
     fn yaw_comparison_wraps_at_180_degrees() {
-        let actual = EntityState {
-            exists: true,
+        let actual = vec![EntityState {
             rot: Some([-179.0, 0.0]),
             ..EntityState::default()
-        };
+        }];
 
         assert!(entity_matches(
             &actual,
             &check_with_rotation([179.0, 0.0], 2.0)
         ));
+    }
+
+    #[test]
+    fn entity_count_must_match_when_requested() {
+        let expected: EntityCheck =
+            serde_json::from_str(r#"{"is":"minecraft:snowball","count":1}"#).unwrap();
+        let matching = vec![EntityState {
+            entity_type: Some("minecraft:snowball".to_string()),
+            ..EntityState::default()
+        }];
+        let too_many = vec![matching[0].clone(), matching[0].clone()];
+
+        assert!(entity_matches(&matching, &expected));
+        assert!(!entity_matches(&too_many, &expected));
+    }
+
+    #[test]
+    fn every_entity_must_match_requested_state() {
+        let expected: EntityCheck = serde_json::from_str(
+            r#"{"is":"minecraft:snowball","count":2,"pos":[0.0,64.0,0.0],"position_tolerance":1.0}"#,
+        )
+        .unwrap();
+        let matching = EntityState {
+            entity_type: Some("minecraft:snowball".to_string()),
+            pos: Some([0.0, 64.0, 0.0]),
+            ..EntityState::default()
+        };
+        let outside_tolerance = EntityState {
+            pos: Some([3.0, 64.0, 0.0]),
+            ..matching.clone()
+        };
+
+        assert!(!entity_matches(&[matching, outside_tolerance], &expected));
     }
 }
