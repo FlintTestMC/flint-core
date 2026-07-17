@@ -326,6 +326,9 @@ pub struct Block {
     /// Block state properties, e.g., {"powered": "true", "facing": "north"}
     #[serde(flatten, skip_serializing_if = "FxHashMap::is_empty")]
     pub properties: FxHashMap<String, String>,
+    /// Optional block-entity NBT. Assertion keys may be Minecraft data paths.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nbt: Option<EntityNbt>,
 }
 
 impl Block {
@@ -334,6 +337,7 @@ impl Block {
         Self {
             id: id.into(),
             properties: FxHashMap::default(),
+            nbt: None,
         }
     }
 
@@ -342,6 +346,7 @@ impl Block {
         Self {
             id: id.into(),
             properties,
+            nbt: None,
         }
     }
 
@@ -352,15 +357,20 @@ impl Block {
 
     /// Generate a Minecraft command string like `minecraft:lever[powered=false,face=floor]`.
     pub fn to_command(&self) -> String {
+        let nbt = self
+            .nbt
+            .as_ref()
+            .map(EntityNbt::to_snbt)
+            .unwrap_or_default();
         if self.properties.is_empty() {
-            self.id.clone()
+            format!("{}{}", self.id, nbt)
         } else {
             let props: Vec<String> = self
                 .properties
                 .iter()
                 .map(|(key, value)| format!("{}={}", key, value))
                 .collect();
-            format!("{}[{}]", self.id, props.join(","))
+            format!("{}[{}]{}", self.id, props.join(","), nbt)
         }
     }
 }
@@ -385,10 +395,13 @@ impl<'de> Deserialize<'de> for Block {
             {
                 let mut id: Option<String> = None;
                 let mut properties = FxHashMap::default();
+                let mut nbt = None;
 
                 while let Some(key) = map.next_key::<String>()? {
                     if key == "id" {
                         id = Some(map.next_value()?);
+                    } else if key == "nbt" {
+                        nbt = Some(map.next_value()?);
                     } else if key == "properties" {
                         // Handle nested properties object
                         let nested: FxHashMap<String, serde_json::Value> = map.next_value()?;
@@ -405,7 +418,11 @@ impl<'de> Deserialize<'de> for Block {
                 }
 
                 let id = id.ok_or_else(|| serde::de::Error::missing_field("id"))?;
-                Ok(Block { id, properties })
+                Ok(Block {
+                    id,
+                    properties,
+                    nbt,
+                })
             }
         }
 
@@ -424,11 +441,20 @@ fn json_value_to_string(value: &serde_json::Value) -> String {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EntityNbt(FxHashMap<String, serde_json::Value>);
 
 impl EntityNbt {
+    pub fn from_string_values(values: impl IntoIterator<Item = (String, String)>) -> Self {
+        Self(
+            values
+                .into_iter()
+                .map(|(key, value)| (key, serde_json::Value::String(value)))
+                .collect(),
+        )
+    }
+
     pub fn to_snbt(&self) -> String {
         if self.0.is_empty() {
             "{}".to_string()
@@ -1473,6 +1499,26 @@ mod tests {
             }
             _ => panic!("expected entity assert"),
         }
+    }
+
+    #[test]
+    fn block_deserializes_block_entity_nbt() {
+        let block: Block = serde_json::from_str(
+            r#"{"id":"minecraft:hopper","facing":"down","nbt":{"Items":[{"Slot":"0b","id":"minecraft:cobblestone","count":1}]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            block.properties.get("facing").map(String::as_str),
+            Some("down")
+        );
+        assert_eq!(
+            block.nbt.as_ref().unwrap().requested_paths(),
+            vec!["Items".to_string()]
+        );
+        let command = block.to_command();
+        assert!(command.starts_with("minecraft:hopper[facing=down]"));
+        assert!(command.contains("id:\"minecraft:cobblestone\""));
     }
 
     #[test]
