@@ -227,10 +227,15 @@
           "type": "object",
           "additionalProperties": true,
           "description": "Block state properties as a nested object"
+        },
+        "nbt": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Block-entity NBT. Assertion keys may be data paths such as Items[0].id"
         }
       },
       "additionalProperties": true,
-      "description": "Block specification with identifier and optional state properties (can be flat or nested under 'properties')"
+      "description": "Block specification with optional state properties and block-entity NBT"
     },
     "BlockFace": {
       "type": "string",

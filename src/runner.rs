@@ -6,7 +6,7 @@ use crate::results::{
     ActionOutcome, AssertEntityFail, AssertFailure, AssertTimeFail, AssertionResult, TestResult,
     TestSummary,
 };
-use crate::test_spec::{ActionType, AssertType, EntityCheck, Item, PlayerSlot};
+use crate::test_spec::{ActionType, AssertType, EntityCheck, EntityNbt, Item, PlayerSlot};
 use crate::timeline::TimelineAggregate;
 use crate::traits::{EntityState, FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
@@ -172,6 +172,7 @@ impl<A: FlintAdapter> TestRunner<A> {
                 let air = Block {
                     id: "minecraft:air".to_string(),
                     properties: Default::default(),
+                    nbt: None,
                 };
                 world.set_block(pos, &air);
                 ActionOutcome::Action
@@ -192,8 +193,13 @@ impl<A: FlintAdapter> TestRunner<A> {
                     match check {
                         AssertType::Block(block) => {
                             let pos = [block.pos[0], block.pos[1], block.pos[2]];
-                            let actual = world.get_block(pos);
                             let expected_blocks = block.is.to_vec();
+                            let requested_nbt = expected_blocks
+                                .iter()
+                                .filter_map(|block| block.nbt.as_ref())
+                                .flat_map(EntityNbt::requested_paths)
+                                .collect::<Vec<_>>();
+                            let actual = world.get_block(pos, &requested_nbt);
 
                             if !expected_blocks
                                 .iter()
@@ -329,7 +335,7 @@ fn check_id(actual: &str, expected: &str) -> bool {
 }
 
 /// Check if actual block matches expected.
-fn block_matches(actual: &Block, expected: &Block) -> bool {
+pub fn block_matches(actual: &Block, expected: &Block) -> bool {
     // Check block ID
     if !check_id(&actual.id, &expected.id) {
         return false;
@@ -347,7 +353,21 @@ fn block_matches(actual: &Block, expected: &Block) -> bool {
         }
     }
 
-    true
+    let Some(expected_nbt) = expected.nbt.as_ref() else {
+        return true;
+    };
+    let Some(actual_nbt) = actual.nbt.as_ref() else {
+        return false;
+    };
+    let actual_values = actual_nbt.expected_values();
+    expected_nbt
+        .expected_values()
+        .into_iter()
+        .all(|(key, expected)| {
+            actual_values.get(&key).is_some_and(|actual| {
+                normalize_entity_nbt_value(actual) == normalize_entity_nbt_value(&expected)
+            })
+        })
 }
 
 fn item_matches(actual: &Item, expected: &Item) -> bool {

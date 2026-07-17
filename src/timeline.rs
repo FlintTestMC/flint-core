@@ -131,6 +131,7 @@ mod tests {
                 block: Block {
                     id: "stone".to_string(),
                     properties: Default::default(),
+                    nbt: None,
                 },
             },
         };
@@ -141,6 +142,7 @@ mod tests {
                 block: Block {
                     id: "dirt".to_string(),
                     properties: Default::default(),
+                    nbt: None,
                 },
             },
         };
@@ -164,6 +166,7 @@ mod tests {
                 block: Block {
                     id: "stone".to_string(),
                     properties: Default::default(),
+                    nbt: None,
                 },
             },
         };
@@ -174,6 +177,7 @@ mod tests {
                 block: Block {
                     id: "dirt".to_string(),
                     properties: Default::default(),
+                    nbt: None,
                 },
             },
         };
@@ -201,6 +205,7 @@ mod tests {
                     is: BlockSpec::Single(Block {
                         id: "minecraft:redstone_wire".to_string(),
                         properties: Default::default(),
+                        nbt: None,
                     }),
                 })],
             },
@@ -239,6 +244,7 @@ mod tests {
                 block: Block {
                     id: "stone".to_string(),
                     properties: Default::default(),
+                    nbt: None,
                 },
             },
         };
@@ -249,6 +255,7 @@ mod tests {
                 block: Block {
                     properties: Default::default(),
                     id: "dirt".to_string(),
+                    nbt: None,
                 },
             },
         };

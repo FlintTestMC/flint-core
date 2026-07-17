@@ -54,7 +54,7 @@ pub trait FlintWorld: Send + Sync {
     fn get_time(&self) -> u64;
 
     /// Get block at position
-    fn get_block(&self, pos: BlockPos) -> Block;
+    fn get_block(&self, pos: BlockPos, requested_nbt: &[String]) -> Block;
 
     /// Set block at position (with neighbor updates)
     fn set_block(&mut self, pos: BlockPos, block: &Block);
