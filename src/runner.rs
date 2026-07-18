@@ -10,6 +10,7 @@ use crate::test_spec::{ActionType, AssertType, EntityCheck, EntityNbt, Item, Pla
 use crate::timeline::TimelineAggregate;
 use crate::traits::{EntityState, FlintAdapter, FlintPlayer, FlintWorld};
 use crate::{Block, TestSpec, TestSpecLoadResult};
+use anyhow::Result;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -50,7 +51,12 @@ impl<A: FlintAdapter> TestRunner<A> {
     /// Run a single test
     pub fn run_test(&self, spec: &TestSpec) -> TestResult {
         let start_time = Instant::now();
-        let mut world = self.adapter.create_test_world();
+        let mut world = match self.adapter.create_test_world() {
+            Ok(world) => world,
+            Err(error) => {
+                return TestResult::new(&spec.name).with_failure_reason(error.to_string());
+            }
+        };
 
         // Build timeline for single test (no offset)
         let tests_with_offsets = vec![(spec.clone(), [0i32, 0, 0])];
@@ -70,14 +76,26 @@ impl<A: FlintAdapter> TestRunner<A> {
 
             // Set initial inventory
             for (slot_name, item) in &player_config.inventory {
-                p.set_slot(*slot_name, Some(item));
+                if let Err(error) = p.set_slot(*slot_name, Some(item)) {
+                    result.success = false;
+                    result.failure_reason = Some(error.to_string());
+                    return result;
+                }
             }
 
             // Set initial hotbar selection
-            p.select_hotbar(player_config.selected_hotbar);
+            if let Err(error) = p.select_hotbar(player_config.selected_hotbar) {
+                result.success = false;
+                result.failure_reason = Some(error.to_string());
+                return result;
+            }
 
             // Set game mode
-            p.set_game_mode(player_config.game_mode);
+            if let Err(error) = p.set_game_mode(player_config.game_mode) {
+                result.success = false;
+                result.failure_reason = Some(error.to_string());
+                return result;
+            }
         }
 
         // Execute timeline tick by tick
@@ -85,12 +103,19 @@ impl<A: FlintAdapter> TestRunner<A> {
             // Execute actions for this tick
             if let Some(actions) = timeline.timeline.get(&tick) {
                 for (_test_idx, entry, _value_idx) in actions.iter() {
-                    match self.execute_action(&mut *world, &mut player, &entry.action_type, tick) {
-                        ActionOutcome::Action => {}
-                        ActionOutcome::AssertPassed => {
+                    match execute_action(&mut *world, &mut player, &entry.action_type, tick) {
+                        Err(error) => {
+                            result.success = false;
+                            result.failure_reason = Some(error.to_string());
+                            result.total_ticks = tick;
+                            result.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                            return result;
+                        }
+                        Ok(ActionOutcome::Action) => {}
+                        Ok(ActionOutcome::AssertPassed) => {
                             result.add_assertion(AssertionResult::Success(tick));
                         }
-                        ActionOutcome::AssertFailed(fail) => {
+                        Ok(ActionOutcome::AssertFailed(fail)) => {
                             result.add_assertion(AssertionResult::Failure(fail));
                             result.success = false;
                             result.total_ticks = tick;
@@ -102,7 +127,13 @@ impl<A: FlintAdapter> TestRunner<A> {
             }
 
             // Advance game tick
-            world.do_tick();
+            if let Err(error) = world.do_tick() {
+                result.success = false;
+                result.failure_reason = Some(error.to_string());
+                result.total_ticks = tick;
+                result.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                return result;
+            }
         }
 
         result.total_ticks = timeline.max_tick;
@@ -123,193 +154,177 @@ impl<A: FlintAdapter> TestRunner<A> {
             .collect();
         TestSummary::from_results(results)
     }
+}
 
-    /// Execute a single action
-    fn execute_action(
-        &self,
-        world: &mut dyn FlintWorld,
-        player: &mut Option<Box<dyn FlintPlayer>>,
-        action: &ActionType,
-        _tick: u32,
-    ) -> ActionOutcome {
-        match action {
-            ActionType::Place { pos, block } => {
-                let pos = [pos[0], pos[1], pos[2]];
-                world.set_block(pos, block);
-                ActionOutcome::Action
+/// Execute one test action against any Flint world adapter.
+pub fn execute_action(
+    world: &mut dyn FlintWorld,
+    player: &mut Option<Box<dyn FlintPlayer>>,
+    action: &ActionType,
+    tick: u32,
+) -> Result<ActionOutcome> {
+    match action {
+        ActionType::Place { pos, block } => {
+            let pos = [pos[0], pos[1], pos[2]];
+            world.set_block(pos, block)?;
+            Ok(ActionOutcome::Action)
+        }
+
+        ActionType::PlaceEach { blocks } => {
+            for placement in blocks {
+                let pos = [placement.pos[0], placement.pos[1], placement.pos[2]];
+                world.set_block(pos, &placement.block)?;
             }
+            Ok(ActionOutcome::Action)
+        }
 
-            ActionType::PlaceEach { blocks } => {
-                for placement in blocks {
-                    let pos = [placement.pos[0], placement.pos[1], placement.pos[2]];
-                    world.set_block(pos, &placement.block);
-                }
-                ActionOutcome::Action
-            }
+        ActionType::Fill { region, with } => {
+            world.fill(*region, with)?;
+            Ok(ActionOutcome::Action)
+        }
 
-            ActionType::Fill { region, with } => {
-                // Flint handles fill by iterating set_block
-                // Handle potentially inverted coordinates
-                let min_x = region[0][0].min(region[1][0]);
-                let max_x = region[0][0].max(region[1][0]);
-                let min_y = region[0][1].min(region[1][1]);
-                let max_y = region[0][1].max(region[1][1]);
-                let min_z = region[0][2].min(region[1][2]);
-                let max_z = region[0][2].max(region[1][2]);
+        ActionType::Remove { pos } => {
+            let pos = [pos[0], pos[1], pos[2]];
+            let air = Block {
+                id: "minecraft:air".to_string(),
+                properties: Default::default(),
+                nbt: None,
+            };
+            world.set_block(pos, &air)?;
+            Ok(ActionOutcome::Action)
+        }
 
-                for x in min_x..=max_x {
-                    for y in min_y..=max_y {
-                        for z in min_z..=max_z {
-                            world.set_block([x, y, z], with);
+        ActionType::Summon {
+            entity_alias,
+            entity_type,
+            pos,
+            nbt,
+        } => {
+            world.summon_entity(entity_alias, entity_type, *pos, nbt.as_ref())?;
+            Ok(ActionOutcome::Action)
+        }
+
+        ActionType::Assert { checks } => {
+            for check in checks {
+                match check {
+                    AssertType::Block(block) => {
+                        let pos = [block.pos[0], block.pos[1], block.pos[2]];
+                        let expected_blocks = block.is.to_vec();
+                        let requested_nbt = expected_blocks
+                            .iter()
+                            .filter_map(|block| block.nbt.as_ref())
+                            .flat_map(EntityNbt::requested_paths)
+                            .collect::<Vec<_>>();
+                        let actual = world.get_block(pos, &requested_nbt)?;
+
+                        if !expected_blocks
+                            .iter()
+                            .any(|expected| block_matches(&actual, expected))
+                        {
+                            return Ok(ActionOutcome::AssertFailed(AssertFailure::new_block(
+                                tick,
+                                expected_blocks,
+                                actual,
+                                pos,
+                            )));
                         }
                     }
-                }
-                ActionOutcome::Action
-            }
-
-            ActionType::Remove { pos } => {
-                let pos = [pos[0], pos[1], pos[2]];
-                let air = Block {
-                    id: "minecraft:air".to_string(),
-                    properties: Default::default(),
-                    nbt: None,
-                };
-                world.set_block(pos, &air);
-                ActionOutcome::Action
-            }
-
-            ActionType::Summon {
-                entity_alias,
-                entity_type,
-                pos,
-                nbt,
-            } => {
-                world.summon_entity(entity_alias, entity_type, *pos, nbt.as_ref());
-                ActionOutcome::Action
-            }
-
-            ActionType::Assert { checks } => {
-                for check in checks {
-                    match check {
-                        AssertType::Block(block) => {
-                            let pos = [block.pos[0], block.pos[1], block.pos[2]];
-                            let expected_blocks = block.is.to_vec();
-                            let requested_nbt = expected_blocks
-                                .iter()
-                                .filter_map(|block| block.nbt.as_ref())
-                                .flat_map(EntityNbt::requested_paths)
-                                .collect::<Vec<_>>();
-                            let actual = world.get_block(pos, &requested_nbt);
-
-                            if !expected_blocks
-                                .iter()
-                                .any(|expected| block_matches(&actual, expected))
-                            {
-                                return ActionOutcome::AssertFailed(AssertFailure::new_block(
-                                    _tick,
-                                    expected_blocks,
-                                    actual,
-                                    pos,
-                                ));
-                            }
+                    AssertType::Inventory(inv) => {
+                        let p = player.get_or_insert_with(|| world.create_player());
+                        let data: Vec<String>;
+                        if let Some(item) = inv.is.clone() {
+                            data = item.data.keys().cloned().collect();
+                        } else {
+                            data = vec![]
                         }
-                        AssertType::Inventory(inv) => {
-                            let p = player.get_or_insert_with(|| world.create_player());
-                            let data: Vec<String>;
-                            if let Some(item) = inv.is.clone() {
-                                data = item.data.keys().cloned().collect();
-                            } else {
-                                data = vec![]
-                            }
-                            let actual = p.get_slot(inv.slot, data).unwrap_or(Item::empty());
-                            let expected = inv.is.clone().unwrap_or(Item::empty());
-                            if !item_matches(&actual, &expected) {
-                                return ActionOutcome::AssertFailed(AssertFailure::new_item(
-                                    _tick, &expected, &actual, inv.slot,
-                                ));
-                            }
-                        }
-                        AssertType::Time(time) => {
-                            let actual = world.get_time();
-                            if actual != time.time {
-                                return ActionOutcome::AssertFailed(
-                                    AssertTimeFail::new(_tick, time.time, actual).into(),
-                                );
-                            }
-                        }
-                        AssertType::Entity(entity) => {
-                            let requested_nbt = entity.nbt.requested_paths();
-                            let actual = if let Some(alias) = entity.entity_alias.as_deref() {
-                                world.get_entity(alias, &requested_nbt)
-                            } else {
-                                world.find_entity(
-                                    entity
-                                        .entity_type
-                                        .as_deref()
-                                        .expect("entity check requires an alias or entity type"),
-                                    &requested_nbt,
-                                )
-                            };
-                            if !entity_matches(&actual, entity) {
-                                return ActionOutcome::AssertFailed(
-                                    AssertEntityFail::new(_tick, entity, &actual).into(),
-                                );
-                            }
-                        }
-                        #[allow(unused)]
-                        _ => {
-                            println!("Unsupported assertion type: {:?}", check);
+                        let actual = p.get_slot(inv.slot, data)?.unwrap_or(Item::empty());
+                        let expected = inv.is.clone().unwrap_or(Item::empty());
+                        if !item_matches(&actual, &expected) {
+                            return Ok(ActionOutcome::AssertFailed(AssertFailure::new_item(
+                                tick, &expected, &actual, inv.slot,
+                            )));
                         }
                     }
+                    AssertType::Time(time) => {
+                        let actual = world.get_time()?;
+                        if actual != time.time {
+                            return Ok(ActionOutcome::AssertFailed(
+                                AssertTimeFail::new(tick, time.time, actual).into(),
+                            ));
+                        }
+                    }
+                    AssertType::Entity(entity) => {
+                        let requested_nbt = entity.nbt.requested_paths();
+                        let actual = if let Some(alias) = entity.entity_alias.as_deref() {
+                            world.get_entity(alias, &requested_nbt)?
+                        } else {
+                            world.find_entity(
+                                entity
+                                    .entity_type
+                                    .as_deref()
+                                    .expect("entity check requires an alias or entity type"),
+                                &requested_nbt,
+                            )?
+                        };
+                        if !entity_matches(&actual, entity) {
+                            return Ok(ActionOutcome::AssertFailed(
+                                AssertEntityFail::new(tick, entity, &actual).into(),
+                            ));
+                        }
+                    }
+                    #[allow(unused)]
+                    _ => {
+                        println!("Unsupported assertion type: {:?}", check);
+                    }
                 }
-                ActionOutcome::AssertPassed
             }
+            Ok(ActionOutcome::AssertPassed)
+        }
 
-            ActionType::Tp {
-                entity_alias,
-                pos,
-                rot,
-            } => {
-                if entity_alias == "player" {
-                    let p = player.get_or_insert_with(|| world.create_player());
-                    p.teleport(*pos, *rot);
-                } else {
-                    world.teleport_entity(entity_alias, *pos, *rot);
-                }
-                ActionOutcome::Action
-            }
-
-            ActionType::Interact { item } => {
-                let p = player
-                    .as_mut()
-                    .expect("interact requires an existing player");
-                if let Some(item_id) = item {
-                    let item = Item::new(item_id);
-                    p.set_slot(PlayerSlot::Hotbar1, Some(&item));
-                    p.select_hotbar(1);
-                }
-                p.interact();
-                ActionOutcome::Action
-            }
-
-            ActionType::SetSlot { slot, item, count } => {
-                // Create player on demand if not already created
+        ActionType::Tp {
+            entity_alias,
+            pos,
+            rot,
+        } => {
+            if entity_alias == "player" {
                 let p = player.get_or_insert_with(|| world.create_player());
-                if let Some(item_id) = item {
-                    let item = Item::with_count(item_id, *count);
-                    p.set_slot(*slot, Some(&item));
-                } else {
-                    p.set_slot(*slot, None);
-                }
-                ActionOutcome::Action
+                p.teleport(*pos, *rot)?;
+            } else {
+                world.teleport_entity(entity_alias, *pos, *rot)?;
             }
+            Ok(ActionOutcome::Action)
+        }
 
-            ActionType::SelectHotbar { slot } => {
-                // Create player on demand if not already created
-                let p = player.get_or_insert_with(|| world.create_player());
-                p.select_hotbar(*slot);
-                ActionOutcome::Action
+        ActionType::Interact { item } => {
+            let p = player
+                .as_mut()
+                .expect("interact requires an existing player");
+            if let Some(item_id) = item {
+                let item = Item::new(item_id);
+                p.set_slot(PlayerSlot::Hotbar1, Some(&item))?;
+                p.select_hotbar(1)?;
             }
+            p.interact()?;
+            Ok(ActionOutcome::Action)
+        }
+
+        ActionType::SetSlot { slot, item, count } => {
+            // Create player on demand if not already created
+            let p = player.get_or_insert_with(|| world.create_player());
+            if let Some(item_id) = item {
+                let item = Item::with_count(item_id, *count);
+                p.set_slot(*slot, Some(&item))?;
+            } else {
+                p.set_slot(*slot, None)?;
+            }
+            Ok(ActionOutcome::Action)
+        }
+
+        ActionType::SelectHotbar { slot } => {
+            // Create player on demand if not already created
+            let p = player.get_or_insert_with(|| world.create_player());
+            p.select_hotbar(*slot)?;
+            Ok(ActionOutcome::Action)
         }
     }
 }
