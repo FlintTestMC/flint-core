@@ -463,8 +463,22 @@ pub fn entity_matches(actual: &[EntityState], expected: &EntityCheck) -> bool {
     })
 }
 
+/// Canonicalizes an NBT value string for comparison.
+///
+/// NBT has no boolean type: the vanilla SNBT parser turns the `true`/`false`
+/// keywords into the bytes `1b`/`0b`, so that's what servers report where a
+/// test spec writes `NoGravity: true`. Both keywords are mapped to their byte
+/// form (after trimming whitespace and surrounding quotes); everything else,
+/// including numeric type suffixes, is compared as written.
 fn normalize_entity_nbt_value(value: &str) -> String {
-    value.trim().trim_matches('"').to_string()
+    let value = value.trim().trim_matches('"').trim();
+    if value.eq_ignore_ascii_case("true") {
+        return "1b".to_string();
+    }
+    if value.eq_ignore_ascii_case("false") {
+        return "0b".to_string();
+    }
+    value.to_string()
 }
 
 #[cfg(test)]
@@ -484,6 +498,53 @@ mod entity_match_tests {
             rotation_tolerance: Some(tolerance),
             nbt: Default::default(),
         }
+    }
+
+    #[test]
+    fn nbt_values_normalize_booleans() {
+        // Spec-side booleans match the byte form the vanilla SNBT parser
+        // produces and servers report.
+        assert_eq!(
+            normalize_entity_nbt_value("true"),
+            normalize_entity_nbt_value("1b")
+        );
+        assert_eq!(
+            normalize_entity_nbt_value("false"),
+            normalize_entity_nbt_value("0b")
+        );
+        // Quoted strings still normalize.
+        assert_eq!(normalize_entity_nbt_value("\"oak\""), "oak");
+        // Guard: type suffixes must survive normalization unchanged.
+        assert_ne!(
+            normalize_entity_nbt_value("0.5f"),
+            normalize_entity_nbt_value("0.5")
+        );
+    }
+
+    #[test]
+    fn entity_nbt_boolean_matches_byte_report() {
+        use crate::test_spec::EntityNbt;
+
+        let expected = EntityCheck {
+            entity_alias: Some("entity".to_string()),
+            entity_type: None,
+            exists: true,
+            count: None,
+            pos: None,
+            position_tolerance: None,
+            rot: None,
+            rotation_tolerance: None,
+            nbt: EntityNbt::from_string_values([("NoGravity".to_string(), "true".to_string())]),
+        };
+
+        let actual = vec![EntityState {
+            nbt: [("NoGravity".to_string(), "1b".to_string())]
+                .into_iter()
+                .collect(),
+            ..EntityState::default()
+        }];
+
+        assert!(entity_matches(&actual, &expected));
     }
 
     #[test]
