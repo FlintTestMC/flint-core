@@ -478,7 +478,53 @@ fn normalize_entity_nbt_value(value: &str) -> String {
     if value.eq_ignore_ascii_case("false") {
         return "0b".to_string();
     }
+    if value.starts_with('[') || value.starts_with('{') {
+        return format_snbt_spacing(value);
+    }
     value.to_string()
+}
+
+/// Reformats a composite SNBT value to the spacing `/data get` prints: one
+/// space after `,`, `;` and `:` outside quoted strings, none before them.
+/// `[I;1,2]` and `[I; 1, 2]` are the same data and compare equal this way.
+fn format_snbt_spacing(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 8);
+    let mut chars = value.chars().peekable();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    while let Some(c) = chars.next() {
+        if let Some(q) = quote {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' => {
+                quote = Some(c);
+                out.push(c);
+            }
+            ',' | ';' | ':' => {
+                while out.ends_with(' ') {
+                    out.pop();
+                }
+                out.push(c);
+                while matches!(chars.peek(), Some(' ')) {
+                    chars.next();
+                }
+                if !matches!(chars.peek(), None | Some(']' | '}')) {
+                    out.push(' ');
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -518,6 +564,29 @@ mod entity_match_tests {
         assert_ne!(
             normalize_entity_nbt_value("0.5f"),
             normalize_entity_nbt_value("0.5")
+        );
+    }
+
+    #[test]
+    fn composite_nbt_values_ignore_spacing_differences() {
+        // Same int array, compact vs /data get spacing.
+        assert_eq!(
+            normalize_entity_nbt_value("[I;1090192112,104018212]"),
+            normalize_entity_nbt_value("[I; 1090192112, 104018212]")
+        );
+        assert_eq!(
+            normalize_entity_nbt_value("{a:1b,b:[0.0d,1.5d]}"),
+            normalize_entity_nbt_value("{a: 1b, b: [0.0d, 1.5d]}")
+        );
+        // Spacing inside quoted strings is data, not formatting.
+        assert_ne!(
+            normalize_entity_nbt_value("[\"a,b\"]"),
+            normalize_entity_nbt_value("[\"a, b\"]")
+        );
+        // Simple values are untouched (ids keep their colon as written).
+        assert_eq!(
+            normalize_entity_nbt_value("minecraft:oak_log"),
+            "minecraft:oak_log"
         );
     }
 
