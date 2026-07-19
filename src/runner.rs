@@ -465,26 +465,18 @@ pub fn entity_matches(actual: &[EntityState], expected: &EntityCheck) -> bool {
 
 /// Canonicalizes an NBT value string for comparison.
 ///
-/// NBT has no boolean type: booleans are stored as bytes, so servers report
-/// `NoGravity: 1` (or `1b` in SNBT form) where a test spec writes
-/// `NoGravity: true`. Both sides are reduced to a shared canonical form:
-/// - whitespace and surrounding quotes are trimmed
-/// - `true`/`false` become `1`/`0`
-/// - numeric SNBT type suffixes are dropped (`1b` -> `1`, `2.5f` -> `2.5`)
+/// NBT has no boolean type: the vanilla SNBT parser turns the `true`/`false`
+/// keywords into the bytes `1b`/`0b`, so that's what servers report where a
+/// test spec writes `NoGravity: true`. Both keywords are mapped to their byte
+/// form (after trimming whitespace and surrounding quotes); everything else,
+/// including numeric type suffixes, is compared as written.
 fn normalize_entity_nbt_value(value: &str) -> String {
     let value = value.trim().trim_matches('"').trim();
     if value.eq_ignore_ascii_case("true") {
-        return "1".to_string();
+        return "1b".to_string();
     }
     if value.eq_ignore_ascii_case("false") {
-        return "0".to_string();
-    }
-    if let Some(number) = value.strip_suffix(|c: char| {
-        matches!(c, 'b' | 'B' | 's' | 'S' | 'l' | 'L' | 'f' | 'F' | 'd' | 'D')
-    }) && !number.is_empty()
-        && number.parse::<f64>().is_ok()
-    {
-        return number.to_string();
+        return "0b".to_string();
     }
     value.to_string()
 }
@@ -509,34 +501,31 @@ mod entity_match_tests {
     }
 
     #[test]
-    fn nbt_values_normalize_booleans_and_suffixes() {
-        // Spec-side booleans match the byte form servers report.
+    fn nbt_values_normalize_booleans() {
+        // Spec-side booleans match the byte form the vanilla SNBT parser
+        // produces and servers report.
         assert_eq!(
             normalize_entity_nbt_value("true"),
-            normalize_entity_nbt_value("1")
+            normalize_entity_nbt_value("1b")
         );
         assert_eq!(
             normalize_entity_nbt_value("false"),
-            normalize_entity_nbt_value("0")
+            normalize_entity_nbt_value("0b")
         );
-        // SNBT numeric suffixes are ignored.
-        assert_eq!(
-            normalize_entity_nbt_value("1b"),
-            normalize_entity_nbt_value("true")
-        );
-        assert_eq!(
+        // Quoted strings still normalize.
+        assert_eq!(normalize_entity_nbt_value("\"oak\""), "oak");
+        // Type suffixes are preserved: values compare as written.
+        assert_eq!(normalize_entity_nbt_value("0.5f"), "0.5f");
+        assert_ne!(
             normalize_entity_nbt_value("0.5f"),
             normalize_entity_nbt_value("0.5")
         );
-        assert_eq!(
-            normalize_entity_nbt_value("42L"),
-            normalize_entity_nbt_value("42")
-        );
-        // Quoted strings still normalize, non-numeric values keep suffix letters.
-        assert_eq!(normalize_entity_nbt_value("\"oak\""), "oak");
-        assert_eq!(normalize_entity_nbt_value("bed"), "bed");
         assert_ne!(
-            normalize_entity_nbt_value("2"),
+            normalize_entity_nbt_value("2b"),
+            normalize_entity_nbt_value("true")
+        );
+        assert_ne!(
+            normalize_entity_nbt_value("1"),
             normalize_entity_nbt_value("true")
         );
     }
