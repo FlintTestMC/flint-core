@@ -1,4 +1,4 @@
-use crate::test_spec::{ActionType, TestSpec, TimelineEntry};
+use crate::test_spec::{ActionType, AssertType, EntityNbt, TestSpec, TimelineEntry};
 use anyhow::{Context, Result, bail};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -114,11 +114,144 @@ pub fn validate_test_name(spec: &TestSpec, path: &Path) -> Result<()> {
     )
 }
 
+/// Reformats a composite SNBT value to the spacing `/data get` prints: one
+/// space after `,`, `;` and `:` outside quoted strings, none before them.
+fn format_snbt_spacing(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 8);
+    let mut chars = value.chars().peekable();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    while let Some(c) = chars.next() {
+        if let Some(q) = quote {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' => {
+                quote = Some(c);
+                out.push(c);
+            }
+            ',' | ';' | ':' => {
+                while out.ends_with(' ') {
+                    out.pop();
+                }
+                out.push(c);
+                while matches!(chars.peek(), Some(' ')) {
+                    chars.next();
+                }
+                if !matches!(chars.peek(), None | Some(']' | '}')) {
+                    out.push(' ');
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn check_nbt_values(nbt: &EntityNbt, location: &str, problems: &mut Vec<String>) {
+    for (key, value) in nbt.expected_values() {
+        let value = value.trim();
+        if !(value.starts_with('[') || value.starts_with('{')) {
+            continue;
+        }
+        let canonical = format_snbt_spacing(value);
+        if value != canonical {
+            problems.push(format!(
+                "  {location}, key '{key}': `{value}` should be written `{canonical}`"
+            ));
+        }
+    }
+}
+
+/// Validate that composite SNBT values use the spacing `/data get` prints,
+/// so adapters can compare them as exact strings.
+pub fn validate_nbt_formatting(spec: &TestSpec) -> Result<()> {
+    let mut problems = Vec::new();
+
+    for (index, entry) in spec.timeline.iter().enumerate() {
+        match &entry.action_type {
+            ActionType::Summon { nbt: Some(nbt), .. } => {
+                check_nbt_values(nbt, &format!("timeline[{index}] summon"), &mut problems);
+            }
+            ActionType::Place { block, .. } => {
+                if let Some(nbt) = &block.nbt {
+                    check_nbt_values(nbt, &format!("timeline[{index}] place"), &mut problems);
+                }
+            }
+            ActionType::PlaceEach { blocks } => {
+                for placement in blocks {
+                    if let Some(nbt) = &placement.block.nbt {
+                        check_nbt_values(
+                            nbt,
+                            &format!("timeline[{index}] place_each"),
+                            &mut problems,
+                        );
+                    }
+                }
+            }
+            ActionType::Fill { with, .. } => {
+                if let Some(nbt) = &with.nbt {
+                    check_nbt_values(nbt, &format!("timeline[{index}] fill"), &mut problems);
+                }
+            }
+            ActionType::Assert { checks } => {
+                for check in checks {
+                    match check {
+                        AssertType::Entity(entity) => {
+                            check_nbt_values(
+                                &entity.nbt,
+                                &format!("timeline[{index}] assert entity"),
+                                &mut problems,
+                            );
+                        }
+                        AssertType::Block(block) => {
+                            for expected in block.is.to_vec() {
+                                if let Some(nbt) = &expected.nbt {
+                                    check_nbt_values(
+                                        nbt,
+                                        &format!("timeline[{index}] assert block"),
+                                        &mut problems,
+                                    );
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if problems.is_empty() {
+        return Ok(());
+    }
+
+    let mut message = format!(
+        "Test '{}': composite NBT values must use /data get spacing:\n",
+        spec.name
+    );
+    for problem in &problems {
+        message.push_str(problem);
+        message.push('\n');
+    }
+    bail!(message.trim_end().to_string())
+}
+
 pub fn validate_test_file(path: &Path) -> Result<()> {
     let spec = TestSpec::from_file(&path.to_path_buf(), false)
         .with_context(|| format!("failed to load {}", path.display()))?;
     validate_test_name(&spec, path)?;
-    validate_timeline_order(&spec)
+    validate_timeline_order(&spec)?;
+    validate_nbt_formatting(&spec)
 }
 
 #[cfg(test)]
@@ -252,6 +385,49 @@ mod tests {
         );
 
         validate_timeline_order(&spec).unwrap();
+    }
+
+    fn summon_with_nbt(value: &str) -> TestSpec {
+        spec_with_timeline(
+            "Nbt Spacing",
+            vec![TimelineEntry {
+                at: TickSpec::Single(0),
+                action_type: ActionType::Summon {
+                    entity_alias: "e".to_string(),
+                    entity_type: "minecraft:arrow".to_string(),
+                    pos: [0.0, 0.0, 0.0],
+                    nbt: Some(crate::test_spec::EntityNbt::from_string_values([(
+                        "Owner".to_string(),
+                        value.to_string(),
+                    )])),
+                },
+            }],
+        )
+    }
+
+    #[test]
+    fn accepts_spaced_composite_nbt() {
+        let spec = summon_with_nbt("[I; 1090192112, 104018212]");
+        validate_nbt_formatting(&spec).unwrap();
+    }
+
+    #[test]
+    fn rejects_compact_composite_nbt() {
+        let spec = summon_with_nbt("[I;1090192112,104018212]");
+        let err = validate_nbt_formatting(&spec).unwrap_err();
+        assert!(err.to_string().contains("[I; 1090192112, 104018212]"));
+    }
+
+    #[test]
+    fn simple_nbt_values_are_not_checked() {
+        let spec = summon_with_nbt("1b");
+        validate_nbt_formatting(&spec).unwrap();
+    }
+
+    #[test]
+    fn spacing_inside_quotes_is_preserved() {
+        let spec = summon_with_nbt("{name: \"a,b\"}");
+        validate_nbt_formatting(&spec).unwrap();
     }
 
     #[test]
