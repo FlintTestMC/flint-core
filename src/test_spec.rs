@@ -1560,4 +1560,14 @@ mod tests {
 
         assert_eq!(check.nbt.to_snbt(), r#"{custom_field:"value"}"#);
     }
+
+    #[test]
+    fn player_config_schema_includes_game_mode_alias() {
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../flint-content/test_spec_schema.json")).unwrap();
+        let properties = &schema["$defs"]["PlayerConfig"]["properties"];
+
+        assert!(properties.get("game_mode").is_some());
+        assert!(properties.get("gamemode").is_some());
+    }
 }
