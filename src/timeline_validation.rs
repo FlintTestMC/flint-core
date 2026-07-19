@@ -114,10 +114,33 @@ pub fn validate_test_name(spec: &TestSpec, path: &Path) -> Result<()> {
     )
 }
 
+/// Validate that the test's cleanup region is anchored around the world origin.
+pub fn validate_cleanup_region_contains_origin(spec: &TestSpec) -> Result<()> {
+    let region = spec.cleanup_region();
+    let min = region[0];
+    let max = region[1];
+
+    if (0..3).all(|axis| min[axis] <= 0 && max[axis] >= 0) {
+        return Ok(());
+    }
+
+    bail!(
+        "Test '{}': cleanup region [{},{},{}] to [{},{},{}] must contain the origin [0,0,0]",
+        spec.name,
+        min[0],
+        min[1],
+        min[2],
+        max[0],
+        max[1],
+        max[2]
+    )
+}
+
 pub fn validate_test_file(path: &Path) -> Result<()> {
     let spec = TestSpec::from_file(&path.to_path_buf(), false)
         .with_context(|| format!("failed to load {}", path.display()))?;
     validate_test_name(&spec, path)?;
+    validate_cleanup_region_contains_origin(&spec)?;
     validate_timeline_order(&spec)
 }
 
@@ -266,5 +289,48 @@ mod tests {
     fn accepts_matching_human_name() {
         let spec = spec_with_timeline("Fence Row Connections", vec![]);
         validate_test_name(&spec, Path::new("tests/fence_row_connections.json")).unwrap();
+    }
+
+    #[test]
+    fn accepts_cleanup_region_around_origin() {
+        let mut spec = spec_with_timeline("At Origin", vec![]);
+        spec.setup
+            .as_mut()
+            .unwrap()
+            .cleanup
+            .as_mut()
+            .unwrap()
+            .region = [[-10, -2, -5], [4, 8, 12]];
+
+        validate_cleanup_region_contains_origin(&spec).unwrap();
+    }
+
+    #[test]
+    fn rejects_cleanup_region_in_the_sky() {
+        let mut spec = spec_with_timeline("In The Sky", vec![]);
+        spec.setup
+            .as_mut()
+            .unwrap()
+            .cleanup
+            .as_mut()
+            .unwrap()
+            .region = [[-2, 100, -2], [2, 104, 2]];
+
+        let err = validate_cleanup_region_contains_origin(&spec).unwrap_err();
+        assert!(err.to_string().contains("must contain the origin [0,0,0]"));
+    }
+
+    #[test]
+    fn rejects_cleanup_region_away_from_origin_on_horizontal_axis() {
+        let mut spec = spec_with_timeline("Far Away", vec![]);
+        spec.setup
+            .as_mut()
+            .unwrap()
+            .cleanup
+            .as_mut()
+            .unwrap()
+            .region = [[100, -2, -2], [104, 2, 2]];
+
+        assert!(validate_cleanup_region_contains_origin(&spec).is_err());
     }
 }
