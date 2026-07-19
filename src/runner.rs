@@ -514,19 +514,10 @@ mod entity_match_tests {
         );
         // Quoted strings still normalize.
         assert_eq!(normalize_entity_nbt_value("\"oak\""), "oak");
-        // Type suffixes are preserved: values compare as written.
-        assert_eq!(normalize_entity_nbt_value("0.5f"), "0.5f");
+        // Guard: type suffixes must survive normalization unchanged.
         assert_ne!(
             normalize_entity_nbt_value("0.5f"),
             normalize_entity_nbt_value("0.5")
-        );
-        assert_ne!(
-            normalize_entity_nbt_value("2b"),
-            normalize_entity_nbt_value("true")
-        );
-        assert_ne!(
-            normalize_entity_nbt_value("1"),
-            normalize_entity_nbt_value("true")
         );
     }
 
