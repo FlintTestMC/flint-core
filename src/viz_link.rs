@@ -102,7 +102,7 @@ pub fn decode(encoded: &str) -> Result<FailurePayload> {
 pub fn failure_url(payload: &FailurePayload, base: &str) -> Result<String> {
     let encoded = encode(payload)?;
     let trimmed = base.trim_end_matches('/');
-    Ok(format!("{trimmed}/failure#data={encoded}"))
+    Ok(format!("{trimmed}/#/failure#data={encoded}"))
 }
 
 #[cfg(test)]
