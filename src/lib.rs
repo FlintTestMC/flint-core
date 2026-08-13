@@ -18,7 +18,7 @@ pub use traits::{BlockPos, FlintAdapter, FlintPlayer, FlintWorld, ServerInfo};
 
 // Re-export flint-core types commonly used with this library
 pub use crate::loader::TestLoader;
-pub use crate::test_spec::{Block, Item, PlayerSlot, TestSpec, TestSpecLoadResult};
+pub use crate::test_spec::{Block, Item, PlayerSlot, TestSpec, TestSpecLoadResult, WorldConfig};
 
 pub fn get_supported_version() -> VersionReq {
     VersionReq::parse("<=1.0.0").unwrap()

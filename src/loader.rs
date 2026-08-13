@@ -16,10 +16,31 @@ pub struct TestLoader {
 
 impl TestLoader {
     pub fn new(path: &Path, recursive: bool) -> Result<Self> {
+        let files = Self::collect_test_files(path, recursive)?;
         Ok(TestLoader {
             path: path.to_path_buf(),
             recursive,
-            index: Index::load(&Self::collect_test_files(path, recursive)?)?,
+            index: Index::load(&files)?,
+        })
+    }
+
+    /// Creates a loader without reading or writing the tag index.
+    ///
+    /// Use this for callers that already know which files to load or that need
+    /// only unfiltered filesystem discovery. Tag-based methods on this loader
+    /// return no paths until an indexed loader is created with [`Self::new`].
+    pub fn unindexed(path: &Path, recursive: bool) -> Result<Self> {
+        let files = Self::collect_test_files(path, recursive)?;
+        if !path.exists() {
+            anyhow::bail!("test path does not exist: {}", path.display());
+        }
+        if path.is_file() && files.is_empty() {
+            anyhow::bail!("test file is not JSON: {}", path.display());
+        }
+        Ok(TestLoader {
+            path: path.to_path_buf(),
+            recursive,
+            index: Index::empty(),
         })
     }
 
@@ -222,6 +243,17 @@ mod tests {
 
         let files = TestLoader::collect_test_files(&txt_file, false).unwrap();
         assert_eq!(files.len(), 0);
+    }
+
+    #[test]
+    fn unindexed_loader_rejects_missing_and_non_json_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let missing = temp_dir.path().join("missing.json");
+        let text = temp_dir.path().join("test.txt");
+        fs::write(&text, "test").unwrap();
+
+        assert!(TestLoader::unindexed(&missing, false).is_err());
+        assert!(TestLoader::unindexed(&text, false).is_err());
     }
 
     #[test]

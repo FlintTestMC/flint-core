@@ -4,14 +4,22 @@
 //! to provide the actual block and player operations.
 
 use crate::Block;
-use crate::test_spec::{EntityNbt, GameMode, Item, PlayerSlot};
-use anyhow::Result;
+use crate::test_spec::{EntityNbt, GameMode, Item, PlayerSlot, WorldConfig};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 
 /// Position in world coordinates [x, y, z]
 pub type BlockPos = [i32; 3];
+
+fn require_default_world_config(config: &WorldConfig) -> Result<()> {
+    if config == &WorldConfig::default() {
+        return Ok(());
+    }
+
+    bail!("adapter does not support non-default world configuration: {config:?}")
+}
 
 /// Server metadata
 #[derive(Debug, Clone)]
@@ -33,7 +41,11 @@ pub struct EntityState {
 
 /// Main adapter trait - server implements this to create test worlds
 pub trait FlintAdapter: Send + Sync {
-    /// Create a new disposable in-memory test world
+    /// Create a new disposable in-memory test world.
+    ///
+    /// The world must start in the canonical state described by
+    /// [`WorldConfig::default`]. [`FlintWorld::configure_world`] is called after
+    /// creation so adapters can apply any requested non-default configuration.
     fn create_test_world(&self) -> Result<Box<dyn FlintWorld>>;
 
     /// Server metadata for logging
@@ -45,10 +57,26 @@ pub trait FlintAdapter: Send + Sync {
 /// This is the minimal interface servers must provide.
 /// Flint handles fill/clear by iterating `set_block()`.
 pub trait FlintWorld: Send + Sync {
-    /// Execute exactly one game tick
+    /// Apply the requested world configuration before player setup or timeline
+    /// execution.
+    ///
+    /// The default implementation preserves compatibility for adapters whose
+    /// newly-created worlds already satisfy the canonical
+    /// [`WorldConfig::default`] state. Returning `Ok(())` for that configuration
+    /// is an assertion that the state is already correct, not permission to
+    /// ignore it. Every non-default request fails so unsupported time, weather,
+    /// or gamerule changes can never be ignored. Configuration must not advance
+    /// the world's tick counter.
+    fn configure_world(&mut self, config: &WorldConfig) -> Result<()> {
+        require_default_world_config(config)
+    }
+
+    /// Execute exactly one game tick.
+    ///
+    /// A successful call must advance [`Self::current_tick`] by exactly one.
     fn do_tick(&mut self) -> Result<()>;
 
-    /// Get current tick count
+    /// Get the test-local tick count, which must begin at zero.
     fn current_tick(&self) -> u64;
 
     /// Query the world's current daytime (0..=23999).
@@ -90,7 +118,7 @@ pub trait FlintWorld: Send + Sync {
         _pos: [f64; 3],
         _nbt: Option<&EntityNbt>,
     ) -> Result<()> {
-        Ok(())
+        bail!("adapter does not support summoning entities")
     }
 
     /// Teleport an implementation-managed entity alias.
@@ -100,12 +128,12 @@ pub trait FlintWorld: Send + Sync {
         _pos: [f64; 3],
         _rot: Option<[f32; 2]>,
     ) -> Result<()> {
-        Ok(())
+        bail!("adapter does not support teleporting entities")
     }
 
     /// Read the current entity state for a test-local alias.
     fn get_entity(&self, _alias: &str, _requested_nbt: &[String]) -> Result<Vec<EntityState>> {
-        Ok(Vec::new())
+        bail!("adapter does not support querying entities by alias")
     }
 
     /// Find an entity created naturally by gameplay using its entity type.
@@ -114,14 +142,16 @@ pub trait FlintWorld: Send + Sync {
         _entity_type: &str,
         _requested_nbt: &[String],
     ) -> Result<Vec<EntityState>> {
-        Ok(Vec::new())
+        bail!("adapter does not support querying entities by type")
     }
 
-    /// Create a simulated player in this world
+    /// Create and attach a simulated player to this world.
     ///
     /// Only called when tests use player-related actions.
     /// Pure block tests (place, fill, assert) don't need a player.
-    fn create_player(&mut self) -> Box<dyn FlintPlayer>;
+    /// Implementations must return an error if player construction or world
+    /// attachment cannot be completed.
+    fn create_player(&mut self) -> Result<Box<dyn FlintPlayer>>;
 }
 
 /// Player operations - server implements this
@@ -153,4 +183,20 @@ pub trait FlintPlayer: Send + Sync {
 
     /// Set the game mode of the player (creative, survival, etc.)
     fn set_game_mode(&mut self, mode: GameMode) -> Result<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_world_configuration_compatibility_fails_closed() {
+        assert!(require_default_world_config(&WorldConfig::default()).is_ok());
+
+        let non_default = WorldConfig {
+            time: "minecraft:noon".to_string(),
+            ..WorldConfig::default()
+        };
+        assert!(require_default_world_config(&non_default).is_err());
+    }
 }

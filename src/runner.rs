@@ -43,6 +43,19 @@ pub struct TestRunner<A: FlintAdapter> {
     // config: TestRunConfig,
 }
 
+fn finish_with_error(
+    mut result: TestResult,
+    reason: impl Into<String>,
+    total_ticks: u32,
+    start_time: &Instant,
+) -> TestResult {
+    result.success = false;
+    result.failure_reason = Some(reason.into());
+    result.total_ticks = total_ticks;
+    result.execution_time_ms = start_time.elapsed().as_millis() as u64;
+    result
+}
+
 impl<A: FlintAdapter> TestRunner<A> {
     pub fn new(adapter: Arc<A>) -> Self {
         Self { adapter }
@@ -51,19 +64,35 @@ impl<A: FlintAdapter> TestRunner<A> {
     /// Run a single test
     pub fn run_test(&self, spec: &TestSpec) -> TestResult {
         let start_time = Instant::now();
+        let mut result = TestResult::new(&spec.name);
+        result.minecraft_ids = spec.minecraft_ids.clone();
+
         let mut world = match self.adapter.create_test_world() {
             Ok(world) => world,
             Err(error) => {
-                return TestResult::new(&spec.name).with_failure_reason(error.to_string());
+                return finish_with_error(result, error.to_string(), 0, &start_time);
             }
         };
+
+        if let Some(setup) = &spec.setup
+            && let Err(error) = world.configure_world(&setup.world)
+        {
+            return finish_with_error(result, error.to_string(), 0, &start_time);
+        }
+
+        let initial_tick = world.current_tick();
+        if initial_tick != 0 {
+            return finish_with_error(
+                result,
+                format!("new test world must start at tick 0, got {initial_tick}"),
+                0,
+                &start_time,
+            );
+        }
 
         // Build timeline for single test (no offset)
         let tests_with_offsets = vec![(spec.clone(), [0i32, 0, 0])];
         let timeline = TimelineAggregate::from_tests(&tests_with_offsets);
-
-        let mut result = TestResult::new(&spec.name);
-        result.minecraft_ids = spec.minecraft_ids.clone();
 
         // Player is created on demand when player actions are used
         let mut player: Option<Box<dyn FlintPlayer>> = None;
@@ -72,44 +101,49 @@ impl<A: FlintAdapter> TestRunner<A> {
         if let Some(setup) = &spec.setup
             && let Some(player_config) = setup.player.as_ref()
         {
-            let p = player.get_or_insert_with(|| world.create_player());
+            let p = match get_or_create_player(&mut *world, &mut player) {
+                Ok(player) => player,
+                Err(error) => {
+                    return finish_with_error(result, error.to_string(), 0, &start_time);
+                }
+            };
 
             // Set initial inventory
             for (slot_name, item) in &player_config.inventory {
                 if let Err(error) = p.set_slot(*slot_name, Some(item)) {
-                    result.success = false;
-                    result.failure_reason = Some(error.to_string());
-                    return result;
+                    return finish_with_error(result, error.to_string(), 0, &start_time);
                 }
             }
 
             // Set initial hotbar selection
             if let Err(error) = p.select_hotbar(player_config.selected_hotbar) {
-                result.success = false;
-                result.failure_reason = Some(error.to_string());
-                return result;
+                return finish_with_error(result, error.to_string(), 0, &start_time);
             }
 
             // Set game mode
             if let Err(error) = p.set_game_mode(player_config.game_mode) {
-                result.success = false;
-                result.failure_reason = Some(error.to_string());
-                return result;
+                return finish_with_error(result, error.to_string(), 0, &start_time);
             }
         }
 
         // Execute timeline tick by tick
         for tick in 0..=timeline.max_tick {
+            let actual_tick = world.current_tick();
+            if actual_tick != u64::from(tick) {
+                return finish_with_error(
+                    result,
+                    format!("world tick mismatch before timeline tick {tick}: got {actual_tick}"),
+                    tick,
+                    &start_time,
+                );
+            }
+
             // Execute actions for this tick
             if let Some(actions) = timeline.timeline.get(&tick) {
                 for (_test_idx, entry, _value_idx) in actions.iter() {
                     match execute_action(&mut *world, &mut player, &entry.action_type, tick) {
                         Err(error) => {
-                            result.success = false;
-                            result.failure_reason = Some(error.to_string());
-                            result.total_ticks = tick;
-                            result.execution_time_ms = start_time.elapsed().as_millis() as u64;
-                            return result;
+                            return finish_with_error(result, error.to_string(), tick, &start_time);
                         }
                         Ok(ActionOutcome::Action) => {}
                         Ok(ActionOutcome::AssertPassed) => {
@@ -126,13 +160,27 @@ impl<A: FlintAdapter> TestRunner<A> {
                 }
             }
 
-            // Advance game tick
+            // Timeline tick N observes exactly N completed game ticks. There is
+            // no reason to advance the world after the final timeline entry.
+            if tick == timeline.max_tick {
+                break;
+            }
+
             if let Err(error) = world.do_tick() {
-                result.success = false;
-                result.failure_reason = Some(error.to_string());
-                result.total_ticks = tick;
-                result.execution_time_ms = start_time.elapsed().as_millis() as u64;
-                return result;
+                return finish_with_error(result, error.to_string(), tick, &start_time);
+            }
+
+            let expected_tick = u64::from(tick) + 1;
+            let actual_tick = world.current_tick();
+            if actual_tick != expected_tick {
+                return finish_with_error(
+                    result,
+                    format!(
+                        "world must advance exactly one tick: expected {expected_tick}, got {actual_tick}"
+                    ),
+                    tick,
+                    &start_time,
+                );
             }
         }
 
@@ -154,6 +202,19 @@ impl<A: FlintAdapter> TestRunner<A> {
             .collect();
         TestSummary::from_results(results)
     }
+}
+
+fn get_or_create_player<'a>(
+    world: &mut dyn FlintWorld,
+    player: &'a mut Option<Box<dyn FlintPlayer>>,
+) -> Result<&'a mut Box<dyn FlintPlayer>> {
+    if player.is_none() {
+        player.replace(world.create_player()?);
+    }
+
+    player
+        .as_mut()
+        .ok_or_else(|| anyhow::anyhow!("player creation returned no player"))
 }
 
 /// Execute one test action against any Flint world adapter.
@@ -230,7 +291,7 @@ pub fn execute_action(
                         }
                     }
                     AssertType::Inventory(inv) => {
-                        let p = player.get_or_insert_with(|| world.create_player());
+                        let p = get_or_create_player(world, player)?;
                         let data: Vec<String>;
                         if let Some(item) = inv.is.clone() {
                             data = item.data.keys().cloned().collect();
@@ -272,10 +333,6 @@ pub fn execute_action(
                             ));
                         }
                     }
-                    #[allow(unused)]
-                    _ => {
-                        println!("Unsupported assertion type: {:?}", check);
-                    }
                 }
             }
             Ok(ActionOutcome::AssertPassed)
@@ -287,7 +344,7 @@ pub fn execute_action(
             rot,
         } => {
             if entity_alias == "player" {
-                let p = player.get_or_insert_with(|| world.create_player());
+                let p = get_or_create_player(world, player)?;
                 p.teleport(*pos, *rot)?;
             } else {
                 world.teleport_entity(entity_alias, *pos, *rot)?;
@@ -296,9 +353,7 @@ pub fn execute_action(
         }
 
         ActionType::Interact { item } => {
-            let p = player
-                .as_mut()
-                .expect("interact requires an existing player");
+            let p = get_or_create_player(world, player)?;
             if let Some(item_id) = item {
                 let item = Item::new(item_id);
                 p.set_slot(PlayerSlot::Hotbar1, Some(&item))?;
@@ -310,7 +365,7 @@ pub fn execute_action(
 
         ActionType::SetSlot { slot, item, count } => {
             // Create player on demand if not already created
-            let p = player.get_or_insert_with(|| world.create_player());
+            let p = get_or_create_player(world, player)?;
             if let Some(item_id) = item {
                 let item = Item::with_count(item_id, *count);
                 p.set_slot(*slot, Some(&item))?;
@@ -322,7 +377,7 @@ pub fn execute_action(
 
         ActionType::SelectHotbar { slot } => {
             // Create player on demand if not already created
-            let p = player.get_or_insert_with(|| world.create_player());
+            let p = get_or_create_player(world, player)?;
             p.select_hotbar(*slot)?;
             Ok(ActionOutcome::Action)
         }
@@ -591,5 +646,361 @@ mod entity_match_tests {
         };
 
         assert!(!entity_matches(&[matching, outside_tolerance], &expected));
+    }
+}
+
+#[cfg(test)]
+mod runner_contract_tests {
+    use super::*;
+    use crate::test_spec::{
+        BlockCheck, BlockSpec, CleanupSpec, GameMode, SetupSpec, TickSpec, TimelineEntry,
+        WorldConfig,
+    };
+    use crate::traits::{BlockPos, ServerInfo};
+    use std::any::Any;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct ObservedState {
+        configured: Vec<WorldConfig>,
+        ticks: u64,
+        players_created: usize,
+        interactions: usize,
+    }
+
+    struct MockAdapter {
+        observed: Arc<Mutex<ObservedState>>,
+        tick_step: u64,
+        fail_player_creation: bool,
+    }
+
+    impl MockAdapter {
+        fn new(tick_step: u64) -> Self {
+            Self {
+                observed: Arc::new(Mutex::new(ObservedState::default())),
+                tick_step,
+                fail_player_creation: false,
+            }
+        }
+
+        fn with_player_creation_failure(mut self) -> Self {
+            self.fail_player_creation = true;
+            self
+        }
+    }
+
+    impl FlintAdapter for MockAdapter {
+        fn create_test_world(&self) -> Result<Box<dyn FlintWorld>> {
+            Ok(Box::new(MockWorld {
+                observed: Arc::clone(&self.observed),
+                tick_step: self.tick_step,
+                fail_player_creation: self.fail_player_creation,
+                blocks: HashMap::new(),
+            }))
+        }
+
+        fn server_info(&self) -> ServerInfo {
+            ServerInfo {
+                minecraft_version: "test".to_string(),
+            }
+        }
+    }
+
+    struct MockWorld {
+        observed: Arc<Mutex<ObservedState>>,
+        tick_step: u64,
+        fail_player_creation: bool,
+        blocks: HashMap<BlockPos, Block>,
+    }
+
+    impl FlintWorld for MockWorld {
+        fn configure_world(&mut self, config: &WorldConfig) -> Result<()> {
+            self.observed
+                .lock()
+                .unwrap()
+                .configured
+                .push(config.clone());
+            Ok(())
+        }
+
+        fn do_tick(&mut self) -> Result<()> {
+            self.observed.lock().unwrap().ticks += self.tick_step;
+            Ok(())
+        }
+
+        fn current_tick(&self) -> u64 {
+            self.observed.lock().unwrap().ticks
+        }
+
+        fn get_time(&self) -> Result<u64> {
+            Ok(1000)
+        }
+
+        fn get_block(&self, pos: BlockPos, _requested_nbt: &[String]) -> Result<Block> {
+            Ok(self
+                .blocks
+                .get(&pos)
+                .cloned()
+                .unwrap_or_else(|| Block::new("minecraft:air")))
+        }
+
+        fn set_block(&mut self, pos: BlockPos, block: &Block) -> Result<()> {
+            self.blocks.insert(pos, block.clone());
+            Ok(())
+        }
+
+        fn create_player(&mut self) -> Result<Box<dyn FlintPlayer>> {
+            if self.fail_player_creation {
+                anyhow::bail!("player attachment failed");
+            }
+            self.observed.lock().unwrap().players_created += 1;
+            Ok(Box::new(MockPlayer {
+                observed: Arc::clone(&self.observed),
+                selected_hotbar: 1,
+            }))
+        }
+    }
+
+    struct MockPlayer {
+        observed: Arc<Mutex<ObservedState>>,
+        selected_hotbar: u8,
+    }
+
+    impl FlintPlayer for MockPlayer {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn set_slot(&mut self, _slot: PlayerSlot, _item: Option<&Item>) -> Result<()> {
+            Ok(())
+        }
+
+        fn get_slot(
+            &mut self,
+            _slot: PlayerSlot,
+            _requested_data: Vec<String>,
+        ) -> Result<Option<Item>> {
+            Ok(None)
+        }
+
+        fn select_hotbar(&mut self, slot: u8) -> Result<()> {
+            self.selected_hotbar = slot;
+            Ok(())
+        }
+
+        fn selected_hotbar(&self) -> u8 {
+            self.selected_hotbar
+        }
+
+        fn teleport(&mut self, _pos: [f64; 3], _rot: Option<[f32; 2]>) -> Result<()> {
+            Ok(())
+        }
+
+        fn interact(&mut self) -> Result<()> {
+            self.observed.lock().unwrap().interactions += 1;
+            Ok(())
+        }
+
+        fn set_game_mode(&mut self, _mode: GameMode) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn test_spec(name: &str, world: WorldConfig, timeline: Vec<TimelineEntry>) -> TestSpec {
+        TestSpec {
+            flint_version: None,
+            name: name.to_string(),
+            description: None,
+            tags: vec![],
+            minecraft_ids: vec![],
+            dependencies: vec![],
+            setup: Some(SetupSpec {
+                cleanup: Some(CleanupSpec {
+                    region: [[0, 0, 0], [1, 1, 1]],
+                }),
+                player: None,
+                world,
+            }),
+            timeline,
+            breakpoints: vec![],
+        }
+    }
+
+    fn place(at: u32, block: &str) -> TimelineEntry {
+        TimelineEntry {
+            at: TickSpec::Single(at),
+            action_type: ActionType::Place {
+                pos: [0, 0, 0],
+                block: Block::new(block),
+            },
+        }
+    }
+
+    fn assert_block(at: u32, block: &str) -> TimelineEntry {
+        TimelineEntry {
+            at: TickSpec::Single(at),
+            action_type: ActionType::Assert {
+                checks: vec![AssertType::Block(BlockCheck {
+                    pos: [0, 0, 0],
+                    is: BlockSpec::Single(Block::new(block)),
+                })],
+            },
+        }
+    }
+
+    #[test]
+    fn positive_fixture_configures_world_and_observes_exact_tick_one() {
+        let adapter = Arc::new(MockAdapter::new(1));
+        let world_config = WorldConfig {
+            time: "minecraft:noon".to_string(),
+            ..WorldConfig::default()
+        };
+        let spec = test_spec(
+            "positive",
+            world_config.clone(),
+            vec![
+                place(0, "minecraft:stone"),
+                assert_block(1, "minecraft:stone"),
+            ],
+        );
+
+        let result = TestRunner::new(Arc::clone(&adapter)).run_test(&spec);
+
+        assert!(result.success, "{:?}", result.failure_reason);
+        assert_eq!(result.total_ticks, 1);
+        let observed = adapter.observed.lock().unwrap();
+        assert_eq!(observed.configured, vec![world_config]);
+        assert_eq!(observed.ticks, 1);
+    }
+
+    #[test]
+    fn tick_zero_fixture_does_not_advance_the_world() {
+        let adapter = Arc::new(MockAdapter::new(1));
+        let spec = test_spec(
+            "tick zero",
+            WorldConfig::default(),
+            vec![assert_block(0, "minecraft:air")],
+        );
+
+        let result = TestRunner::new(Arc::clone(&adapter)).run_test(&spec);
+
+        assert!(result.success, "{:?}", result.failure_reason);
+        assert_eq!(result.total_ticks, 0);
+        assert_eq!(adapter.observed.lock().unwrap().ticks, 0);
+    }
+
+    #[test]
+    fn deliberately_wrong_assertion_returns_a_red_result() {
+        let adapter = Arc::new(MockAdapter::new(1));
+        let spec = test_spec(
+            "negative control",
+            WorldConfig::default(),
+            vec![
+                place(0, "minecraft:stone"),
+                assert_block(1, "minecraft:dirt"),
+            ],
+        );
+
+        let result = TestRunner::new(Arc::clone(&adapter)).run_test(&spec);
+
+        assert!(!result.success);
+        assert_eq!(result.total_ticks, 1);
+        assert!(matches!(
+            result.assertions.as_slice(),
+            [AssertionResult::Failure(AssertFailure::Block(_))]
+        ));
+    }
+
+    #[test]
+    fn runner_rejects_a_world_that_does_not_advance_exactly_one_tick() {
+        let adapter = Arc::new(MockAdapter::new(0));
+        let spec = test_spec(
+            "stalled clock",
+            WorldConfig::default(),
+            vec![assert_block(1, "minecraft:air")],
+        );
+
+        let result = TestRunner::new(adapter).run_test(&spec);
+
+        assert!(!result.success);
+        assert!(
+            result
+                .failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("advance exactly one tick"))
+        );
+    }
+
+    #[test]
+    fn interact_creates_a_player_on_demand() {
+        let adapter = Arc::new(MockAdapter::new(1));
+        let spec = test_spec(
+            "interact",
+            WorldConfig::default(),
+            vec![TimelineEntry {
+                at: TickSpec::Single(0),
+                action_type: ActionType::Interact { item: None },
+            }],
+        );
+
+        let result = TestRunner::new(Arc::clone(&adapter)).run_test(&spec);
+
+        assert!(result.success, "{:?}", result.failure_reason);
+        let observed = adapter.observed.lock().unwrap();
+        assert_eq!(observed.players_created, 1);
+        assert_eq!(observed.interactions, 1);
+    }
+
+    #[test]
+    fn player_creation_failure_becomes_a_red_result() {
+        let adapter = Arc::new(MockAdapter::new(1).with_player_creation_failure());
+        let spec = test_spec(
+            "player attachment failure",
+            WorldConfig::default(),
+            vec![TimelineEntry {
+                at: TickSpec::Single(0),
+                action_type: ActionType::Interact { item: None },
+            }],
+        );
+
+        let result = TestRunner::new(adapter).run_test(&spec);
+
+        assert!(!result.success);
+        assert_eq!(result.total_ticks, 0);
+        assert!(
+            result
+                .failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("player attachment failed"))
+        );
+    }
+
+    #[test]
+    fn unsupported_entity_action_fails_instead_of_silently_passing() {
+        let adapter = Arc::new(MockAdapter::new(1));
+        let spec = test_spec(
+            "unsupported entity",
+            WorldConfig::default(),
+            vec![TimelineEntry {
+                at: TickSpec::Single(0),
+                action_type: ActionType::Summon {
+                    entity_alias: "test".to_string(),
+                    entity_type: "minecraft:pig".to_string(),
+                    pos: [0.0, 0.0, 0.0],
+                    nbt: None,
+                },
+            }],
+        );
+
+        let result = TestRunner::new(adapter).run_test(&spec);
+
+        assert!(!result.success);
+        assert!(
+            result
+                .failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("does not support summoning entities"))
+        );
     }
 }

@@ -454,6 +454,28 @@ mod tests {
     }
 
     #[test]
+    fn structured_nbt_is_serialized_in_canonical_spacing() {
+        let spec: TestSpec = serde_json::from_str(
+            r#"{
+                "name":"Structured Nbt",
+                "setup":{"cleanup":{"region":[[0,0,0],[0,0,0]]}},
+                "timeline":[{
+                    "at":0,
+                    "do":"place",
+                    "pos":[0,0,0],
+                    "block":{
+                        "id":"minecraft:hopper",
+                        "nbt":{"Items":[{"Slot":"0b","id":"minecraft:cobblestone","count":4}]}
+                    }
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        validate_nbt_formatting(&spec).unwrap();
+    }
+
+    #[test]
     fn rejects_test_name_mismatch() {
         let spec = spec_with_timeline("Wrong Name", vec![]);
         let err =

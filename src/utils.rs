@@ -13,12 +13,13 @@ pub fn get_test_path() -> String {
 
 /// Check if a file is a JSON file by extension and excludes the index.json
 pub fn is_json_file(path: &Path) -> bool {
-    path.extension()
+    let is_json = path
+        .extension()
         .and_then(|s| s.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("json"))
-        .unwrap_or(false)
-        && path.file_name().is_some()
-        && path.file_name().unwrap().to_string_lossy() != "index.json"
+        .unwrap_or(false);
+    let is_index = path.file_name().is_some_and(|name| name == "index.json");
+    is_json && !is_index
 }
 
 #[cfg(test)]

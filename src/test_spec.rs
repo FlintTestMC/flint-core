@@ -498,15 +498,15 @@ fn json_value_to_snbt(value: &serde_json::Value) -> String {
                 .iter()
                 .map(json_value_to_snbt)
                 .collect::<Vec<_>>()
-                .join(",");
+                .join(", ");
             format!("[{values}]")
         }
         serde_json::Value::Object(fields) => {
             let fields = fields
                 .iter()
-                .map(|(key, value)| format!("{key}:{}", json_value_to_snbt(value)))
+                .map(|(key, value)| format!("{key}: {}", json_value_to_snbt(value)))
                 .collect::<Vec<_>>()
-                .join(",");
+                .join(", ");
             format!("{{{fields}}}")
         }
     }
@@ -1518,7 +1518,16 @@ mod tests {
         );
         let command = block.to_command();
         assert!(command.starts_with("minecraft:hopper[facing=down]"));
-        assert!(command.contains("id:\"minecraft:cobblestone\""));
+        assert!(command.contains("id: \"minecraft:cobblestone\""));
+        assert_eq!(
+            block
+                .nbt
+                .unwrap()
+                .expected_values()
+                .get("Items")
+                .map(String::as_str),
+            Some("[{Slot: 0b, count: 1, id: \"minecraft:cobblestone\"}]")
+        );
     }
 
     #[test]

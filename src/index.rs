@@ -103,7 +103,7 @@ impl Index {
     }
 
     /// Creates an empty Index
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             hash: 0,
             index: BTreeMap::new(),
