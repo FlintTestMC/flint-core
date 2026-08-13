@@ -102,7 +102,7 @@ pub fn decode(encoded: &str) -> Result<FailurePayload> {
 pub fn failure_url(payload: &FailurePayload, base: &str) -> Result<String> {
     let encoded = encode(payload)?;
     let trimmed = base.trim_end_matches('/');
-    Ok(format!("{trimmed}/failure#data={encoded}"))
+    Ok(format!("{trimmed}/#/failure#data={encoded}"))
 }
 
 #[cfg(test)]
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn failure_url_uses_fragment_and_trims_trailing_slash() {
         let url = failure_url(&sample_payload(), "http://localhost:7878/").unwrap();
-        assert!(url.starts_with("http://localhost:7878/failure#data="));
+        assert!(url.starts_with("http://localhost:7878/#/failure#data="));
         assert!(!url.contains("?data="));
     }
 
