@@ -115,8 +115,10 @@ impl<A: FlintAdapter> TestRunner<A> {
                         Ok(ActionOutcome::AssertPassed) => {
                             result.add_assertion(AssertionResult::Success(tick));
                         }
-                        Ok(ActionOutcome::AssertFailed(fail)) => {
-                            result.add_assertion(AssertionResult::Failure(fail));
+                        Ok(ActionOutcome::AssertFailed(failures)) => {
+                            for fail in failures {
+                                result.add_assertion(AssertionResult::Failure(fail));
+                            }
                             result.success = false;
                             result.total_ticks = tick;
                             result.execution_time_ms = start_time.elapsed().as_millis() as u64;
@@ -205,6 +207,7 @@ pub fn execute_action(
         }
 
         ActionType::Assert { checks } => {
+            let mut failures = Vec::new();
             for check in checks {
                 match check {
                     AssertType::Block(block) => {
@@ -221,12 +224,12 @@ pub fn execute_action(
                             .iter()
                             .any(|expected| block_matches(&actual, expected))
                         {
-                            return Ok(ActionOutcome::AssertFailed(AssertFailure::new_block(
+                            failures.push(AssertFailure::new_block(
                                 tick,
                                 expected_blocks,
                                 actual,
                                 pos,
-                            )));
+                            ));
                         }
                     }
                     AssertType::Inventory(inv) => {
@@ -240,17 +243,17 @@ pub fn execute_action(
                         let actual = p.get_slot(inv.slot, data)?.unwrap_or(Item::empty());
                         let expected = inv.is.clone().unwrap_or(Item::empty());
                         if !item_matches(&actual, &expected) {
-                            return Ok(ActionOutcome::AssertFailed(AssertFailure::new_item(
+                            failures.push(AssertFailure::new_item(
                                 tick, &expected, &actual, inv.slot,
-                            )));
+                            ));
                         }
                     }
                     AssertType::Time(time) => {
                         let actual = world.get_time()?;
                         if actual != time.time {
-                            return Ok(ActionOutcome::AssertFailed(
+                            failures.push(
                                 AssertTimeFail::new(tick, time.time, actual).into(),
-                            ));
+                            );
                         }
                     }
                     AssertType::Entity(entity) => {
@@ -267,9 +270,9 @@ pub fn execute_action(
                             )?
                         };
                         if !entity_matches(&actual, entity) {
-                            return Ok(ActionOutcome::AssertFailed(
+                            failures.push(
                                 AssertEntityFail::new(tick, entity, &actual).into(),
-                            ));
+                            );
                         }
                     }
                     #[allow(unused)]
@@ -278,7 +281,13 @@ pub fn execute_action(
                     }
                 }
             }
-            Ok(ActionOutcome::AssertPassed)
+            if failures.is_empty()
+            {
+                Ok(ActionOutcome::AssertPassed)
+            }
+            else {
+                Ok(ActionOutcome::AssertFailed(failures))
+            }
         }
 
         ActionType::Tp {

@@ -13,7 +13,7 @@ pub enum ActionOutcome {
     /// Assertion passed
     AssertPassed,
     /// Assertion failed with details
-    AssertFailed(AssertFailure),
+    AssertFailed(Vec<AssertFailure>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
