@@ -243,17 +243,14 @@ pub fn execute_action(
                         let actual = p.get_slot(inv.slot, data)?.unwrap_or(Item::empty());
                         let expected = inv.is.clone().unwrap_or(Item::empty());
                         if !item_matches(&actual, &expected) {
-                            failures.push(AssertFailure::new_item(
-                                tick, &expected, &actual, inv.slot,
-                            ));
+                            failures
+                                .push(AssertFailure::new_item(tick, &expected, &actual, inv.slot));
                         }
                     }
                     AssertType::Time(time) => {
                         let actual = world.get_time()?;
                         if actual != time.time {
-                            failures.push(
-                                AssertTimeFail::new(tick, time.time, actual).into(),
-                            );
+                            failures.push(AssertTimeFail::new(tick, time.time, actual).into());
                         }
                     }
                     AssertType::Entity(entity) => {
@@ -270,9 +267,7 @@ pub fn execute_action(
                             )?
                         };
                         if !entity_matches(&actual, entity) {
-                            failures.push(
-                                AssertEntityFail::new(tick, entity, &actual).into(),
-                            );
+                            failures.push(AssertEntityFail::new(tick, entity, &actual).into());
                         }
                     }
                     #[allow(unused)]
@@ -281,11 +276,9 @@ pub fn execute_action(
                     }
                 }
             }
-            if failures.is_empty()
-            {
+            if failures.is_empty() {
                 Ok(ActionOutcome::AssertPassed)
-            }
-            else {
+            } else {
                 Ok(ActionOutcome::AssertFailed(failures))
             }
         }
