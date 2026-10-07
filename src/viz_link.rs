@@ -102,7 +102,7 @@ pub fn decode(encoded: &str) -> Result<FailurePayload> {
 pub fn failure_url(payload: &FailurePayload, base: &str) -> Result<String> {
     let encoded = encode(payload)?;
     let trimmed = base.trim_end_matches('/');
-    Ok(format!("{trimmed}/#/failure#data={encoded}"))
+    Ok(format!("{trimmed}/#/failure?data={encoded}"))
 }
 
 #[cfg(test)]
@@ -186,8 +186,11 @@ mod tests {
     #[test]
     fn failure_url_uses_fragment_and_trims_trailing_slash() {
         let url = failure_url(&sample_payload(), "http://localhost:7878/").unwrap();
-        assert!(url.starts_with("http://localhost:7878/#/failure#data="));
-        assert!(!url.contains("?data="));
+        assert!(url.starts_with("http://localhost:7878/#/failure?data="));
+        // Exactly one `#`: a second one is invalid and gets percent-encoded by
+        // IDE terminals, breaking the link. Payload must stay in the fragment.
+        assert_eq!(url.matches('#').count(), 1);
+        assert!(url.split_once('#').unwrap().1.contains("?data="));
     }
 
     #[test]
