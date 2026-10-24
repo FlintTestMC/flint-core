@@ -8,5 +8,5 @@ fn main() {
         .ok()
         .unwrap()
         .verify_and_rebuild_index()
-        .expect("Verify wasn't successfull and rebuild also failed");
+        .expect("Verify wasn't successful and rebuild also failed");
 }
