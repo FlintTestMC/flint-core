@@ -480,7 +480,36 @@ fn normalize_entity_nbt_value(value: &str) -> String {
     if value.eq_ignore_ascii_case("false") {
         return "0b".to_string();
     }
-    value.to_string()
+    strip_unquoted_whitespace(value)
+}
+
+/// Removes whitespace outside quoted segments, so `[I; 1, 2]` (vanilla
+/// `/data get` spacing) equals `[I;1,2]` (compact form servers may emit).
+fn strip_unquoted_whitespace(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for c in value.chars() {
+        match quote {
+            Some(q) => {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == q {
+                    quote = None;
+                }
+                out.push(c);
+            }
+            None if c == '"' || c == '\'' => {
+                quote = Some(c);
+                out.push(c);
+            }
+            None if c.is_whitespace() => {}
+            None => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -520,6 +549,18 @@ mod entity_match_tests {
         assert_ne!(
             normalize_entity_nbt_value("0.5f"),
             normalize_entity_nbt_value("0.5")
+        );
+    }
+
+    #[test]
+    fn nbt_values_ignore_spacing_outside_quotes() {
+        assert_eq!(
+            normalize_entity_nbt_value("[I; 1090192112, 104018212, -2046533210, 1798617213]"),
+            normalize_entity_nbt_value("[I;1090192112,104018212,-2046533210,1798617213]")
+        );
+        assert_ne!(
+            normalize_entity_nbt_value("{name:'a b'}"),
+            normalize_entity_nbt_value("{name:'ab'}")
         );
     }
 
