@@ -75,8 +75,7 @@ impl<A: FlintAdapter> TestRunner<A> {
             }
 
             // Initialize player from config if present (advanced mode)
-            if let Some(player_config) = setup.player.as_ref()
-            {
+            if let Some(player_config) = setup.player.as_ref() {
                 let p = player.get_or_insert_with(|| world.create_player());
 
                 // Set initial inventory

@@ -5,7 +5,7 @@
 
 use crate::Block;
 use crate::test_spec::{EntityNbt, GameMode, GameruleValue, Item, PlayerSlot};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
