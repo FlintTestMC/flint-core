@@ -4,7 +4,7 @@
 //! to provide the actual block and player operations.
 
 use crate::Block;
-use crate::test_spec::{EntityNbt, GameMode, Item, PlayerSlot};
+use crate::test_spec::{EntityNbt, GameMode, GameruleValue, Item, PlayerSlot};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -81,6 +81,9 @@ pub trait FlintWorld: Send + Sync {
         }
         Ok(())
     }
+
+    /// Set a gamerule before the test runs. Default is a no-op.
+    fn set_gamerule(&mut self, _rule: String, _value: GameruleValue) {}
 
     /// Summon an entity with a stable test-local alias.
     fn summon_entity(
