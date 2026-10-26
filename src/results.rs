@@ -92,7 +92,9 @@ pub struct AssertBlockFail {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssertInventoryFail {
     pub tick: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected: Option<Item>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual: Option<Item>,
     pub slot: PlayerSlot,
 }
