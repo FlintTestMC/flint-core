@@ -71,7 +71,11 @@ impl<A: FlintAdapter> TestRunner<A> {
         if let Some(setup) = &spec.setup {
             // Set gamerules
             for (rule, value) in &setup.world.gamerules {
-                world.set_gamerule(rule.clone(), value.clone());
+                if let Err(error) = world.set_gamerule(rule.clone(), value.clone()) {
+                    result.success = false;
+                    result.failure_reason = Some(error.to_string());
+                    return result;
+                }
             }
 
             // Initialize player from config if present (advanced mode)
