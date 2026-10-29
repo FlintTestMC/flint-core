@@ -21,8 +21,11 @@ pub struct ServerInfo {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EntityState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entity_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pos: Option<[f64; 3]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rot: Option<[f32; 2]>,
     pub nbt: HashMap<String, String>,
 }

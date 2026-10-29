@@ -26,9 +26,10 @@ pub struct MinimalTestSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestSpec {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flint_version: Option<String>,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -36,7 +37,7 @@ pub struct TestSpec {
     pub minecraft_ids: Vec<String>,
     #[serde(default)]
     pub dependencies: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setup: Option<SetupSpec>,
     pub timeline: Vec<TimelineEntry>,
     #[serde(default)]
@@ -45,9 +46,9 @@ pub struct TestSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupSpec {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cleanup: Option<CleanupSpec>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub player: Option<PlayerConfig>,
     #[serde(default)]
     pub world: WorldConfig,
@@ -568,7 +569,7 @@ pub enum ActionType {
         entity_alias: String,
         entity_type: String,
         pos: [f64; 3],
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         nbt: Option<EntityNbt>,
     },
 
@@ -583,21 +584,21 @@ pub enum ActionType {
         entity_alias: String,
         pos: [f64; 3],
         /// Rotation as [yaw, pitch].
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         rot: Option<[f32; 2]>,
     },
 
     /// Interact using the item in the player's active hand.
     Interact {
         /// Item to use. If not specified, uses the player's active item.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         item: Option<String>,
     },
 
     /// Set an item in a player slot
     SetSlot {
         slot: PlayerSlot,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         item: Option<String>,
         #[serde(default = "default_count")]
         count: u8,
@@ -767,21 +768,21 @@ pub struct BlockCheck {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityCheck {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entity_alias: Option<String>,
-    #[serde(default, rename = "is")]
+    #[serde(default, rename = "is", skip_serializing_if = "Option::is_none")]
     pub entity_type: Option<String>,
     #[serde(default = "default_exists")]
     pub exists: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub count: Option<usize>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pos: Option<[f64; 3]>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position_tolerance: Option<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rot: Option<[f32; 2]>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotation_tolerance: Option<f32>,
     #[serde(default, flatten)]
     pub nbt: EntityNbt,
@@ -803,7 +804,11 @@ pub enum TestSpecLoadResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InventoryCheck {
     pub slot: PlayerSlot,
-    #[serde(default, deserialize_with = "deserialize_item_or_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_item_or_none",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub is: Option<Item>,
 }
 

@@ -37,6 +37,7 @@ pub struct FailurePayload {
     pub spec: TestSpec,
     /// Optional relative path of the test file, for live-edit-on-disk in local dev.
     /// flint-viz tries this first; on 404 it falls back to `spec`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_path: Option<PathBuf>,
     /// Failing assertions from the run. Today's runner stops at the first
     /// failure (so `len() == 1`); the type is a `Vec` so a future runner that
@@ -152,6 +153,33 @@ mod tests {
             decoded.source_path.as_deref(),
             Some(std::path::Path::new("tests/round-trip.flint.json"))
         );
+    }
+
+    #[test]
+    fn encoded_json_has_no_null_fields() {
+        use crate::test_spec::{ActionType, TickSpec, TimelineEntry};
+
+        let mut payload = sample_payload();
+        payload.source_path = None;
+        payload.spec.timeline.push(TimelineEntry {
+            at: TickSpec::Single(0),
+            action_type: ActionType::Summon {
+                entity_alias: "zombie".to_string(),
+                entity_type: "minecraft:zombie".to_string(),
+                pos: [0.0, 1.0, 0.0],
+                nbt: None,
+            },
+        });
+        let encoded = encode(&payload).unwrap();
+        let compressed = URL_SAFE_NO_PAD.decode(encoded.as_bytes()).unwrap();
+        let mut json = String::new();
+        GzDecoder::new(&compressed[..])
+            .read_to_string(&mut json)
+            .unwrap();
+        assert!(!json.contains("null"), "found null in: {json}");
+        let decoded = decode(&encoded).unwrap();
+        assert!(decoded.source_path.is_none());
+        assert_eq!(decoded.spec.timeline.len(), 1);
     }
 
     #[test]
