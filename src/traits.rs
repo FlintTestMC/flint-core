@@ -4,8 +4,8 @@
 //! to provide the actual block and player operations.
 
 use crate::Block;
-use crate::test_spec::{EntityNbt, GameMode, Item, PlayerSlot};
-use anyhow::Result;
+use crate::test_spec::{EntityNbt, GameMode, GameruleValue, Item, PlayerSlot};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
@@ -82,6 +82,11 @@ pub trait FlintWorld: Send + Sync {
         Ok(())
     }
 
+    /// Set a gamerule before the test runs. Default is a no-op.
+    fn set_gamerule(&mut self, _rule: String, _value: GameruleValue) -> Result<()> {
+        Err(anyhow!("not implemented"))
+    }
+
     /// Summon an entity with a stable test-local alias.
     fn summon_entity(
         &mut self,
@@ -90,7 +95,7 @@ pub trait FlintWorld: Send + Sync {
         _pos: [f64; 3],
         _nbt: Option<&EntityNbt>,
     ) -> Result<()> {
-        Ok(())
+        Err(anyhow!("not implemented"))
     }
 
     /// Teleport an implementation-managed entity alias.
@@ -100,12 +105,12 @@ pub trait FlintWorld: Send + Sync {
         _pos: [f64; 3],
         _rot: Option<[f32; 2]>,
     ) -> Result<()> {
-        Ok(())
+        Err(anyhow!("not implemented"))
     }
 
     /// Read the current entity state for a test-local alias.
     fn get_entity(&self, _alias: &str, _requested_nbt: &[String]) -> Result<Vec<EntityState>> {
-        Ok(Vec::new())
+        Err(anyhow!("not implemented"))
     }
 
     /// Find an entity created naturally by gameplay using its entity type.
@@ -114,7 +119,7 @@ pub trait FlintWorld: Send + Sync {
         _entity_type: &str,
         _requested_nbt: &[String],
     ) -> Result<Vec<EntityState>> {
-        Ok(Vec::new())
+        Err(anyhow!("not implemented"))
     }
 
     /// Create a simulated player in this world

@@ -68,33 +68,42 @@ impl<A: FlintAdapter> TestRunner<A> {
         // Player is created on demand when player actions are used
         let mut player: Option<Box<dyn FlintPlayer>> = None;
 
-        // Initialize player from config if present (advanced mode)
-        if let Some(setup) = &spec.setup
-            && let Some(player_config) = setup.player.as_ref()
-        {
-            let p = player.get_or_insert_with(|| world.create_player());
-
-            // Set initial inventory
-            for (slot_name, item) in &player_config.inventory {
-                if let Err(error) = p.set_slot(*slot_name, Some(item)) {
+        if let Some(setup) = &spec.setup {
+            // Set gamerules
+            for (rule, value) in &setup.world.gamerules {
+                if let Err(error) = world.set_gamerule(rule.clone(), value.clone()) {
                     result.success = false;
                     result.failure_reason = Some(error.to_string());
                     return result;
                 }
             }
 
-            // Set initial hotbar selection
-            if let Err(error) = p.select_hotbar(player_config.selected_hotbar) {
-                result.success = false;
-                result.failure_reason = Some(error.to_string());
-                return result;
-            }
+            // Initialize player from config if present (advanced mode)
+            if let Some(player_config) = setup.player.as_ref() {
+                let p = player.get_or_insert_with(|| world.create_player());
 
-            // Set game mode
-            if let Err(error) = p.set_game_mode(player_config.game_mode) {
-                result.success = false;
-                result.failure_reason = Some(error.to_string());
-                return result;
+                // Set initial inventory
+                for (slot_name, item) in &player_config.inventory {
+                    if let Err(error) = p.set_slot(*slot_name, Some(item)) {
+                        result.success = false;
+                        result.failure_reason = Some(error.to_string());
+                        return result;
+                    }
+                }
+
+                // Set initial hotbar selection
+                if let Err(error) = p.select_hotbar(player_config.selected_hotbar) {
+                    result.success = false;
+                    result.failure_reason = Some(error.to_string());
+                    return result;
+                }
+
+                // Set game mode
+                if let Err(error) = p.set_game_mode(player_config.game_mode) {
+                    result.success = false;
+                    result.failure_reason = Some(error.to_string());
+                    return result;
+                }
             }
         }
 
